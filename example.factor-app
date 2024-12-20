@@ -1,0 +1,12 @@
+app = "local"
+path = "."
+
+[id]
+name = "local"
+provider = "local"
+iss = "$NGROK_URL" # if not using ngrok, set issuer to public hostname of app
+secret = "..." # base64 encoded bootstrap secret -> openssl rand -base64 32
+sub = "local"
+
+[ngrok]
+token = "..." # Token for ngrok

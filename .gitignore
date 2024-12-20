@@ -1,0 +1,6 @@
+.DS_STORE
+.env
+.factor-app
+*.token
+*.config
+/target

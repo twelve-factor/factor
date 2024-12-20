@@ -1,0 +1,7 @@
+{
+  "DEFAULT": {
+    "iss": "http://localhost:5000",
+    "sub": "local",
+    "aud": "default"
+  }
+}
