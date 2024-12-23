@@ -355,7 +355,7 @@ fn handle_create(
     let provider = identity::create_provider(&id_config.settings)?;
 
     let rt = Runtime::new()?;
-    id_config.settings = rt.block_on(provider.configure_app_identity(&app))?;
+    id_config.settings = rt.block_on(provider.configure_app_identity(app))?;
 
     let app_config = AppConfig {
         app: app.to_string(),
@@ -400,7 +400,7 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
         .map(|id| &id.provider.settings)
         .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
 
-    let provider = identity::create_provider(&provider_config)?;
+    let provider = identity::create_provider(provider_config)?;
     let mut server = factor::server::Server::new();
     for (target_id, audience) in targets_map {
         println!("adding identity for {target_id}");

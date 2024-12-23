@@ -140,7 +140,7 @@ impl IdentityProvider for Provider {
 
         // Request a token for the service account
         let token_response = api
-            .create_token_request(&sa_name, &PostParams::default(), &token_request)
+            .create_token_request(sa_name, &PostParams::default(), &token_request)
             .await
             .context("Failed to create token request")?;
 
