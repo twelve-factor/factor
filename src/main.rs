@@ -15,7 +15,6 @@
  */
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use env_logger;
 use factor::child;
 use factor::env;
 use factor::identity;
