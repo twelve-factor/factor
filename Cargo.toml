@@ -46,13 +46,9 @@ toml = "0.8"
 [lints.clippy]
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
+
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+
 uninlined_format_args = "deny"
-redundant_field_names = "deny"
-unnecessary_lazy_evaluations = "deny"
-needless_borrow = "deny"
-needless_return = "deny"
-multiple_bound_locations = "deny"
-into_iter_on_ref = "deny"
-new_without_default = "deny"
-single_component_path_imports = "deny"
-ptr_arg = "deny"
