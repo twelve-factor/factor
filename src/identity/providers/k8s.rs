@@ -20,6 +20,7 @@ use async_trait::async_trait;
 use http::uri::Uri;
 use k8s_openapi::api::authentication::v1::{TokenRequest, TokenRequestSpec};
 use k8s_openapi::api::core::v1::ServiceAccount;
+use kube::config::KubeConfigOptions;
 use kube::{
     api::{Api, PostParams},
     Client,
@@ -45,12 +46,35 @@ pub struct Provider {
 }
 
 impl Provider {
+    /// # Errors
+    ///
+    /// The k8s provider is infallible, but `Provider::new` returns a Result for
+    /// compatibility with the `identity_providers!` macro
     pub fn new(config: Config) -> Result<Self> {
         Ok(Self {
             config,
             client: OnceCell::new(),
         })
     }
+
+    /// # Errors
+    ///
+    /// This method returns an [`anyhow::Error`] if:
+    ///
+    /// - Configuration error in `self.config.kubeconfig_path`:
+    ///     - the config file does not exist
+    ///     - the config file is not valid YAML
+    ///     - the config file is missing a context
+    ///     - see [`kube::config::Kubeconfig::read_from`]
+    ///     - see [`kube::config::Config::from_custom_kubeconfig`]
+    ///
+    /// - Client creation error:
+    ///     - TLS is required but not enabled
+    ///     - Invalid TLS configuration (certificates, etc.)
+    ///     - Invalid authentication configuration
+    ///     - Invalid proxy configuration
+    ///
+    /// - See [`kube::Client::try_default`]
     pub async fn get_client(&self) -> Result<&Client> {
         self.client
             .get_or_try_init(|| async {
@@ -60,7 +84,7 @@ impl Provider {
                         .context("Failed to read kubeconfig from path")?;
                     let client_config = kube::config::Config::from_custom_kubeconfig(
                         kube_config,
-                        &Default::default(),
+                        &KubeConfigOptions::default(),
                     )
                     .await
                     .context("Failed to create config from kubeconfig")?;

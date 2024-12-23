@@ -43,7 +43,7 @@ macro_rules! identity_providers {
         }
 
         impl IdProvider {
-            pub fn variants() -> &'static [&'static str] {
+            #[must_use] pub fn variants() -> &'static [&'static str] {
                 &[$(stringify!($variant)),*]
             }
         }
@@ -58,6 +58,9 @@ macro_rules! identity_providers {
             )*
         }
 
+        /// # Errors
+        ///
+        /// This method returns the same errors as [`providers::$variant::Provider::new`]
         pub fn create_provider(config: &ProviderConfig) -> Result<Arc<dyn IdentityProvider>> {
             match config {
                 $(
@@ -89,6 +92,13 @@ pub struct IdentitySyncService {
 }
 
 impl IdentitySyncService {
+    /// # Errors
+    ///
+    /// - Returns [`anyhow::Error`] if:
+    ///     - `path` is the root or parent directory doesn't exist
+    ///     - permission issues
+    ///
+    /// See [`env::set_var_file`] for more error conditions
     pub fn new(
         path: &str,
         target_id: &str,
@@ -137,7 +147,7 @@ impl Service for IdentitySyncService {
                     match self.provider.get_token(&self.audience).await {
                         Ok(token) => {
                             match env::set_var_file(&self.key, &token, &self.path) {
-                                Ok(_) => {
+                                Ok(()) => {
                                     println!("Successfully wrote token for audience {} to file", self.audience);
                                     match get_claims(&token) {
                                         Ok(claims) => {
@@ -174,6 +184,32 @@ pub struct Claims {
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
+/// Parse the [`Claims`] from a JWT token:
+///
+/// The JWT token is expected to be Base64-encoded JSON in the following format:
+///
+/// ```json
+/// {
+///     "iss": "<issuer>",
+///     "sub": "<subject>",
+///     "aud": "<audience>",
+///     "...": "arbitrary key-value pairs"
+/// }
+/// ```
+///
+/// The token **must**:
+///
+/// - contain the `iss`, `sub` and `aud` fields
+/// - be a valid Base64-encoded JSON
+/// - not contain padding
+///
+/// # Errors
+///
+/// Returns `anyhow::Error` if:
+///
+/// - The JWT token doesn't have 3 parts (separated by `.`)
+/// - The JWT token contains characters that are not base64 (without padding)
+/// - The JWT token payload cannot be decoded as [`Claims`]
 pub fn get_claims(jwt: &str) -> Result<Claims> {
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {

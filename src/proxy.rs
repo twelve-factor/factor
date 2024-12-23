@@ -99,9 +99,8 @@ impl AuthProxy {
 
     async fn validate_token(&self, req: &RequestHeader) -> anyhow::Result<Option<String>> {
         let auth_header = req.headers.get("Authorization");
-        let auth_header = match auth_header {
-            Some(header) => header,
-            None => return Ok(None),
+        let Some(auth_header) = auth_header else {
+            return Ok(None);
         };
         let parts: Vec<&str> = auth_header.to_str()?.split(' ').collect();
         if parts.len() != 2 || parts[0] != "Bearer" {
@@ -150,7 +149,7 @@ impl AuthProxy {
         println!("Decoding token {token}");
         let data = decode::<identity::Claims>(token, &decoding_key, &validation)?;
 
-        for (key, val) in self.incoming_identity.iter() {
+        for (key, val) in &self.incoming_identity {
             let iss_match = match &val.iss {
                 Some(iss) => Regex::new(iss).unwrap().is_match(&data.claims.iss),
                 None => true,
@@ -252,7 +251,7 @@ pub fn get_proxy_service(
     reject_unknown: bool,
     ipv6: bool,
     provider: Arc<dyn identity::IdentityProvider + Send + Sync>,
-) -> anyhow::Result<Service<HttpProxy<AuthProxy>>> {
+) -> Service<HttpProxy<AuthProxy>> {
     let conf = Arc::new(ServerConf::default());
     let mut proxy = pingora_proxy::http_proxy_service(
         &conf,
@@ -267,7 +266,7 @@ pub fn get_proxy_service(
         },
     );
     proxy.add_tcp(format!("[::]:{port}").as_str());
-    Ok(proxy)
+    proxy
 }
 
 #[async_trait]

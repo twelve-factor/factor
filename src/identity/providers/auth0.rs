@@ -34,6 +34,13 @@ pub struct Provider {
 }
 
 impl Provider {
+    /// # Errors
+    ///
+    /// Returns `anyhow::Error` if:
+    ///
+    /// - `config.issuer` is not set
+    /// - `config.client_id` is not set
+    /// - `config.client_secret` is not set
     pub fn new(config: Config) -> Result<Self> {
         if config.issuer.is_none() {
             anyhow::bail!("auth0 issuer must be configured");
@@ -174,7 +181,7 @@ impl IdentityProvider for Provider {
 
             scopes
                 .iter()
-                .all(|required_scope| grant_scopes.contains(&required_scope.to_string()))
+                .all(|required_scope| grant_scopes.contains(&(*required_scope).to_string()))
         });
 
         if !grant_exists {

@@ -28,6 +28,7 @@ pub struct ChildService {
 }
 
 impl ChildService {
+    #[must_use]
     pub fn new(command: Vec<String>, port: u16, wait_for: Vec<String>) -> Self {
         ChildService {
             command,

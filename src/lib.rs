@@ -30,5 +30,5 @@ fn check_code_formatting() {
     if res.is_err() {
         let _ = cmd!(sh, "cargo fmt").run();
     }
-    res.unwrap()
+    res.unwrap();
 }

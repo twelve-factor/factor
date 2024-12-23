@@ -25,6 +25,7 @@ pub trait Service: Send + Sync {
 }
 
 // TODO: remove this compatibility shim once internal traits are used
+
 pub struct Server {
     services: Vec<Box<dyn Service>>,
     handles: Vec<JoinHandle<()>>,
@@ -40,6 +41,13 @@ impl Default for Server {
 }
 
 impl Server {
+    /// # Panics
+    ///
+    /// Panics if the Tokio runtime cannot be created.
+    ///
+    /// TODO: Should we just expect consumers to supply their own
+    /// `#[tokio::main]` entry point?
+    #[must_use]
     pub fn new() -> Server {
         let runtime = Runtime::new().expect("Failed to create Tokio runtime");
         Server::new_from_runtime(runtime.into())
@@ -72,6 +80,9 @@ impl Server {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the shutdown channel is already closed.
     pub fn shutdown(&mut self) {
         println!("Sending shutdown signal to all services...");
         self.shutdown_tx
@@ -80,12 +91,16 @@ impl Server {
         self.wait_for_exit();
     }
 
+    /// # Panics
+    ///
+    /// Panics if awaiting any of the join handles fails. This
+    /// is most likely due to a panic in one of the services.  
     pub fn wait_for_exit(&mut self) {
         let handles = std::mem::take(&mut self.handles);
         self.runtime.block_on(async move {
             for handle in handles {
                 handle.await.unwrap();
             }
-        })
+        });
     }
 }

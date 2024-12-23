@@ -29,18 +29,14 @@ pub struct NgrokService {
 }
 
 impl NgrokService {
-    pub fn new(
-        tx: oneshot::Sender<String>,
-        port: u16,
-        ipv6: bool,
-        token: String,
-    ) -> anyhow::Result<Self> {
-        Ok(NgrokService {
+    #[must_use]
+    pub fn new(tx: oneshot::Sender<String>, port: u16, ipv6: bool, token: String) -> Self {
+        NgrokService {
             port,
             token,
             ipv6,
             tx: Some(tx),
-        })
+        }
     }
 }
 

@@ -50,8 +50,8 @@ xshell = "0.2.7"
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
 
-correctness = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
-style = { level = "deny", priority = -1 }
-
-uninlined_format_args = "deny"
+correctness = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
