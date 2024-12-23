@@ -131,10 +131,10 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
-fn parse_target<T: AsRef<str>, U: AsRef<str>>(s: &str) -> Result<(T, U), String>
+fn parse_target<T, U>(s: &str) -> Result<(T, U), String>
 where
-    T: From<String>,
-    U: From<String>,
+    T: From<String> + AsRef<str>,
+    U: From<String> + AsRef<str>,
 {
     let pos = s.find('=');
     match pos {
