@@ -364,7 +364,7 @@ fn handle_create(
         id: Some(AppIdConfig {
             name: provider_name.to_string(),
             provider: id_config,
-            targets: id_targets.into_iter().cloned().collect(),
+            targets: id_targets.iter().cloned().collect(),
         }),
     };
 

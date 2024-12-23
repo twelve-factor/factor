@@ -52,9 +52,9 @@ unnecessary_lazy_evaluations = "deny"
 needless_borrow = "deny"
 needless_return = "deny"
 multiple_bound_locations = "deny"
+into_iter_on_ref = "deny"
 
 # allow these so we can create one commit for each idiom change
 new_without_default = "allow"
 single_component_path_imports = "allow"
-into_iter_on_ref = "allow"
 ptr_arg = "allow"
