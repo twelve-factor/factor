@@ -263,7 +263,7 @@ pub fn get_proxy_service(
             incoming_identity,
             key_cache: Mutex::new(HashMap::new()),
             client: reqwest::Client::new(),
-            provider: provider,
+            provider,
         },
     );
     proxy.add_tcp(format!("[::]:{port}").as_str());

@@ -107,7 +107,7 @@ impl IdentitySyncService {
         env::set_var_file(&key, "", &path)?;
         let service = IdentitySyncService {
             key: key.clone(),
-            path: path,
+            path,
             audience: audience.to_string(),
             provider,
         };

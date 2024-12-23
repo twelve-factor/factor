@@ -47,9 +47,9 @@ toml = "0.8"
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
 uninlined_format_args = "deny"
+redundant_field_names = "deny"
 
 # allow these so we can create one commit for each idiom change
-redundant_field_names = "allow"
 unnecessary_lazy_evaluations = "allow"
 needless_borrow = "allow"
 needless_return = "allow"
