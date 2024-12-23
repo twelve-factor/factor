@@ -115,7 +115,7 @@ fn load_incoming_identity(path: &str) -> Result<IncomingIdentity, anyhow::Error>
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read incoming identity file at {}: {}", path, e))?;
     toml::from_str(&contents).or_else(|e| {
-        eprintln!("Failed to parse {} as TOML, trying JSON: {}", path, e);
+        eprintln!("Failed to parse {path} as TOML, trying JSON: {e}");
         serde_json::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Failed to parse {} as TOML or JSON: {}", path, e))
     })
@@ -374,7 +374,7 @@ fn handle_create(
     file.write_all(toml_string.as_bytes())
         .expect("Failed to write config file");
 
-    println!("Configuration written to {}", config_path);
+    println!("Configuration written to {config_path}");
     Ok(())
 }
 
@@ -403,7 +403,7 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
     let provider = identity::create_provider(&provider_config)?;
     let mut server = factor::server::Server::new();
     for (target_id, audience) in targets_map {
-        println!("adding identity for {}", target_id);
+        println!("adding identity for {target_id}");
         let identity_service = identity::IdentitySyncService::new(
             &app_config.path,
             &target_id,
@@ -437,7 +437,7 @@ fn handle_proxy(
         .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
     let provider = identity::create_provider(&id.provider.settings)?;
 
-    println!("Proxying port {} to {}", port, child_port);
+    println!("Proxying port {port} to {child_port}");
     let mut server = factor::server::Server::new_from_runtime(runtime);
     let proxy_service = proxy::get_proxy_service(
         port,
@@ -499,7 +499,7 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
         }
     })?;
     if let Err(e) = fswatcher.watch(Path::new(".env"), RecursiveMode::NonRecursive) {
-        println!("Error watching .env: {}", e);
+        println!("Error watching .env: {e}");
     } else {
         // forget the watcher so it continues to function
         std::mem::forget(fswatcher);
@@ -589,7 +589,7 @@ fn add_services(
         .unwrap()
         .port();
 
-    println!("Proxying port {} to {}", port, child_port);
+    println!("Proxying port {port} to {child_port}");
     let proxy_service = proxy::get_proxy_service(
         port,
         child_port,
@@ -622,7 +622,7 @@ fn add_services(
 fn get_incoming_identity(
     incoming_identity_path: &Option<String>,
 ) -> Result<IncomingIdentity, anyhow::Error> {
-    println!("incoming identity path: {:?}", incoming_identity_path);
+    println!("incoming identity path: {incoming_identity_path:?}");
     let incoming_identity = match incoming_identity_path {
         Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,
         None => IncomingIdentity::default(),
@@ -633,8 +633,7 @@ fn get_incoming_identity(
     } else {
         env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
             println!(
-                "No INCOMING_IDENTITY specified, using default. Error: {:?}",
-                e
+                "No INCOMING_IDENTITY specified, using default. Error: {e:?}"
             );
             Default::default()
         })

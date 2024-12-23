@@ -86,7 +86,7 @@ impl IdentityProvider for Provider {
 
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
         let client = self.get_client().await?;
-        let sa_name = format!("{}-sa", name);
+        let sa_name = format!("{name}-sa");
 
         // Create the service account object
         let sa = ServiceAccount {

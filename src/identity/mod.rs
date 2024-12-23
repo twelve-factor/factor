@@ -101,7 +101,7 @@ impl IdentitySyncService {
             .to_string()
             .to_uppercase();
         let key = format!("{}_{}", target_id_safe, "IDENTITY");
-        let filename = format!("{}.token", target_id);
+        let filename = format!("{target_id}.token");
         let path = PathBuf::from(path).join(filename);
         // make sure that we empty any existing old identity
         env::set_var_file(&key, "", &path)?;
@@ -142,12 +142,12 @@ impl Service for IdentitySyncService {
                                     match get_claims(&token) {
                                         Ok(claims) => {
                                             match serde_json::to_string_pretty(&claims) {
-                                                Ok(json_output) => println!("{}", json_output),
-                                                Err(e) => eprintln!("Failed to convert to JSON: {}", e),
+                                                Ok(json_output) => println!("{json_output}"),
+                                                Err(e) => eprintln!("Failed to convert to JSON: {e}"),
                                             }
                                         }
                                         Err(e) => {
-                                            eprintln!("Failed to get claims for token: {}", e);
+                                            eprintln!("Failed to get claims for token: {e}");
                                             println!("Token prefix: {}", &token[..6]);
                                         }
                                     }

@@ -46,4 +46,15 @@ toml = "0.8"
 [lints.clippy]
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
+uninlined_format_args = "deny"
 
+# allow these so we can create one commit for each idiom change
+redundant_field_names = "allow"
+unnecessary_lazy_evaluations = "allow"
+needless_borrow = "allow"
+needless_return = "allow"
+new_without_default = "allow"
+single_component_path_imports = "allow"
+multiple_bound_locations = "allow"
+into_iter_on_ref = "allow"
+ptr_arg = "allow"

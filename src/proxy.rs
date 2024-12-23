@@ -121,7 +121,7 @@ impl AuthProxy {
         } else {
             // handle the case where the issuer includes a trailing slash
             let iss = unvalidated_claims.iss.trim_end_matches('/');
-            let openid_config_url = format!("{}/.well-known/openid-configuration", iss);
+            let openid_config_url = format!("{iss}/.well-known/openid-configuration");
             let openid_config_response = self.client.get(&openid_config_url).send().await?;
             let openid_config: serde_json::Value = openid_config_response.json().await?;
             let jwks_uri = openid_config["jwks_uri"]
@@ -147,7 +147,7 @@ impl AuthProxy {
         let mut validation = Validation::new(Algorithm::RS256);
         // audience is validated manually below
         validation.validate_aud = false;
-        println!("Decoding token {}", token);
+        println!("Decoding token {token}");
         let data = decode::<identity::Claims>(token, &decoding_key, &validation)?;
 
         for (key, val) in self.incoming_identity.iter() {
@@ -266,7 +266,7 @@ pub fn get_proxy_service(
             provider: provider,
         },
     );
-    proxy.add_tcp(format!("[::]:{}", port).as_str());
+    proxy.add_tcp(format!("[::]:{port}").as_str());
     Ok(proxy)
 }
 

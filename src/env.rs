@@ -68,7 +68,7 @@ pub fn var_with_on_change<K: AsRef<OsStr>>(
     on_change: Option<StringCallback>,
 ) -> Result<String, VarError> {
     if let Some(key_str) = key.as_ref().to_str() {
-        let ref_key = format!("__REF__{}", key_str);
+        let ref_key = format!("__REF__{key_str}");
         if let Ok(ref_value) = env::var(&ref_key) {
             return resolve_reference(&ref_value, on_change);
         }
@@ -237,9 +237,9 @@ mod tests {
         assert!(set_var_file(key, value, &temp_path.to_path_buf()).is_ok());
         assert_eq!(var(key).unwrap(), value);
 
-        let input = format!("Prefix-${}-Suffix", key);
+        let input = format!("Prefix-${key}-Suffix");
 
-        let expected = format!("Prefix-{}-Suffix", value);
+        let expected = format!("Prefix-{value}-Suffix");
 
         let result = expand(&input).unwrap();
 
