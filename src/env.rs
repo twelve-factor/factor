@@ -218,7 +218,7 @@ pub fn expand(input: &str) -> Result<String> {
                     var_name: key.to_string(),
                     cause: e,
                 })
-                .or_else(|_| Ok::<Option<String>, LookupError<std::env::VarError>>(None))
+                .or(Ok::<Option<String>, LookupError<std::env::VarError>>(None))
         },
     )
     .map(|expanded| expanded.into_owned())?)

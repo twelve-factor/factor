@@ -48,9 +48,9 @@ cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"
 uninlined_format_args = "deny"
 redundant_field_names = "deny"
+unnecessary_lazy_evaluations = "deny"
 
 # allow these so we can create one commit for each idiom change
-unnecessary_lazy_evaluations = "allow"
 needless_borrow = "allow"
 needless_return = "allow"
 new_without_default = "allow"
