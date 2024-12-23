@@ -308,7 +308,7 @@ fn handle_create(
     app: &String,
     id_provider: &Option<String>,
     path: &String,
-    id_targets: &Vec<(String, String)>,
+    id_targets: &[(String, String)],
     global_config: &GlobalConfig,
     config_path: &String,
 ) -> Result<(), anyhow::Error> {
@@ -507,7 +507,7 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
 }
 
 fn handle_run(
-    command: &Vec<String>,
+    command: &[String],
     port: u16,
     reject_unknown: bool,
     ipv6: bool,
@@ -562,7 +562,7 @@ fn add_services(
     port: u16,
     reject_unknown: bool,
     ipv6: bool,
-    command: &Vec<String>,
+    command: &[String],
 ) -> Result<(), anyhow::Error> {
     dotenv().ok();
     let incoming_identity = get_incoming_identity(incoming_identity)?;

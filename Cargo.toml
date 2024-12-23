@@ -55,6 +55,4 @@ multiple_bound_locations = "deny"
 into_iter_on_ref = "deny"
 new_without_default = "deny"
 single_component_path_imports = "deny"
-
-# allow these so we can create one commit for each idiom change
-ptr_arg = "allow"
+ptr_arg = "deny"
