@@ -33,6 +33,12 @@ pub struct Server {
     runtime: Arc<Runtime>,
 }
 
+impl Default for Server {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Server {
     pub fn new() -> Server {
         let runtime = Runtime::new().expect("Failed to create Tokio runtime");
