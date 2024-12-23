@@ -41,13 +41,13 @@ impl Server {
 
     pub fn new_from_runtime(runtime: Arc<Runtime>) -> Server {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        return Server {
+        Server {
             services: vec![],
             handles: vec![],
             shutdown_tx,
             shutdown_rx,
             runtime,
-        };
+        }
     }
 
     pub fn add_service(&mut self, service: impl Service + 'static) {

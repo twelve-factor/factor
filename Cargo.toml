@@ -50,9 +50,9 @@ uninlined_format_args = "deny"
 redundant_field_names = "deny"
 unnecessary_lazy_evaluations = "deny"
 needless_borrow = "deny"
+needless_return = "deny"
 
 # allow these so we can create one commit for each idiom change
-needless_return = "allow"
 new_without_default = "allow"
 single_component_path_imports = "allow"
 multiple_bound_locations = "allow"
