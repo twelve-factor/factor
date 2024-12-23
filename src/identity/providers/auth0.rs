@@ -111,10 +111,7 @@ impl IdentityProvider for Provider {
         let app_response: Value = self
             .client
             .post(&apps_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {management_token}"),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&app_data)
             .send()
             .await?
@@ -143,10 +140,7 @@ impl IdentityProvider for Provider {
 
         self.client
             .post(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {management_token}"),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&management_grant_data)
             .send()
             .await?
@@ -156,10 +150,7 @@ impl IdentityProvider for Provider {
         let grants: Vec<Value> = self
             .client
             .get(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {management_token}"),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -206,10 +197,7 @@ impl IdentityProvider for Provider {
         let resource_servers: Vec<Value> = self
             .client
             .get(&resource_servers_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {management_token}"),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -231,10 +219,7 @@ impl IdentityProvider for Provider {
 
             self.client
                 .post(&create_api_url)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {management_token}"),
-                )
+                .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&api_data)
                 .send()
                 .await?
@@ -245,10 +230,7 @@ impl IdentityProvider for Provider {
         let client_grants: Vec<Value> = self
             .client
             .get(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {management_token}"),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -267,10 +249,7 @@ impl IdentityProvider for Provider {
 
             self.client
                 .post(&client_grants_url)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {management_token}"),
-                )
+                .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&client_grant_data)
                 .send()
                 .await?

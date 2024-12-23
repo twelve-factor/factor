@@ -631,9 +631,7 @@ fn get_incoming_identity(
         incoming_identity
     } else {
         env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
-            println!(
-                "No INCOMING_IDENTITY specified, using default. Error: {e:?}"
-            );
+            println!("No INCOMING_IDENTITY specified, using default. Error: {e:?}");
             Default::default()
         })
     };

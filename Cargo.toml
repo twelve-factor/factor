@@ -43,6 +43,9 @@ tempfile = "3.14.0"
 tokio = { version = "1.41", features = ["full"] }
 toml = "0.8"
 
+[dev-dependencies]
+xshell = "0.2.7"
+
 [lints.clippy]
 cargo = { level = "deny", priority = -1 }
 multiple_crate_versions = "allow"

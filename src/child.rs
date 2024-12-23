@@ -46,9 +46,7 @@ impl Service for ChildService {
                 match env::var(key) {
                     Ok(val) if !val.is_empty() => success = true,
                     Ok(_) | Err(_) => {
-                        eprintln!(
-                            "Failed to get value for env var {key}: Retrying in 100ms..."
-                        );
+                        eprintln!("Failed to get value for env var {key}: Retrying in 100ms...");
                         sleep(Duration::from_millis(100)).await;
                     }
                 }
