@@ -2,9 +2,23 @@
 [![Apache
 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Discord](https://img.shields.io/discord/1296917489615110174?label=discord&logo=discord&logoColor=#5865F2)](https://discord.gg/9HFMDMt95z)
-# factor
 
-### The twelve-factor cli
+# Factor
+
+### The Twelve-Factor CLI
+
+Factor makes it easy to run twelve-factor apps locally and in CI.
+
+`factor` aims to provide a local version of the facilities normally provided by a
+twelve factor **platform**, such as routing, and explore proposals for new
+twelve factor recommendations, such as workload identity.
+
+> [!NOTE]
+>
+> It also serves as a place to experiment with new twelve-factor recommendations,
+> because the ability to provide a local version of a proposed recommendation is
+> a great way to verify that the recommendation is not overly coupled to the
+> implementation details of specific platforms.
 
 ## Rationale
 
@@ -16,15 +30,31 @@ twelve-factor platform locally.
 
 ## Goals
 
-This cli will evolve and change over time. The factor cli aims to:
+This cli will evolve and change over time. The `factor` cli aims to:
 
-* Provide an easy way to run twelve-factor apps locally
-* Act as a "polyfill" mechanism to fill in gaps in features provided by the
+- Provide an easy way to run twelve-factor apps locally.
+- Provide a way to run twelve factor apps in CI. Ideally, `factor` could use the
+  app's `project.toml` configuration to run the CI suite in an environment as
+  close as possible to the production environment.
+- Act as a "polyfill" mechanism to fill in gaps in features provided by the
   platform. This allows twelve-factor apps running on platforms that do not
   yet support all of the twelve-factor features to work.
-* Be a place to experiment with new twelve-factor concepts to clarify
+- Be a place to experiment with new twelve-factor concepts to clarify
   recommendations for the manifesto.
 
+> Factor intends to explore whether [devcontainers] can work with Cloud Native
+> Buildpacks to help create a local dev environment that is a close match to the
+> production environment without configuration.
+
+[devcontainers]: https://containers.dev/
+
+### Non-Goals
+
+Factor does not intend to be a general-purpose "Serverless" framework or a
+general-purpose abstraction over multiple platforms.
+
+Instead, it remains focused on providing the facilities expected by a twelve
+factor platform outside of the platform: for local development, testing and CI.
 
 ## Current Features
 
@@ -33,40 +63,52 @@ validation. In the future we plan to experiment more with extensions to port
 binding, constellations of twelve-factor apps, connections between apps and
 backing services, and consistent local builds.
 
-The cli supports:
+The CLI supports:
 
-* exposing app remotely via ngrok
-* `.env` file loading and change detection
-* workload identity managed with a local oidc provider, auth0, or k8s
-* incoming identity validation via proxy
+- exposing app remotely via ngrok
+- `.env` file loading and change detection
+- workload identity managed with a local oidc provider, auth0, or k8s
+- incoming identity validation via proxy
 
 ## Getting Started
 
 To begin, copy the example.factor to your home directory:
 
-    cp exmple.factor ~/.factor
+```shell
+cp example.factor ~/.factor
+```
 
 Add a secret to your local identity provider:
 
-    echo secret = "\"$(openssl rand -base64 32)\"" >> ~/.factor
+```shell
+$ echo secret = "\"$(openssl rand -base64 32)\"" >> ~/.factor
+```
 
 Create an app:
 
-    factor create --app local
+```shell
+$ factor create --app local
+```
 
 Add an identity to your app:
 
-    echo DEFAULT_AUDIENCE=default >> .env
+```shell
+$ echo DEFAULT_AUDIENCE=default >> .env
+```
 
 Run an echo server:
 
-    factor run ./echo.sh --incoming-identity example-clients.json
+```shell
+$ factor run ./echo.sh --incoming-identity example-clients.json
+```
 
 In another terminal window, load the file and make a request passing in the
 token:
 
-   TOKEN=$(cat DEFAULT.token)
-   curl -v -H "Authorization: Bearer $TOKEN" http://localhost:5000
+```shell
+$ TOKEN=$(cat DEFAULT.token) \
+  curl -v -H "Authorization: Bearer $TOKEN" http://localhost:5000
+```
 
 You should see `X-Factor-Client-Id: DEFAULT` in the response from the server.
 Note that in this case we are generating an oidc token an validating it
@@ -129,4 +171,3 @@ the environment. Identity data looks like:
 If a matching token is supplied, then the header `X-Factor-Client-Id` will be
 set to the value of the matching client id. To reject, requests that don't
 match, use the flag `--reject-unknown`
-
