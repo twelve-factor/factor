@@ -1,0 +1,17 @@
+[package]
+name = "factor-error"
+description = "Shared error types for factor crates"
+categories = ["command-line-utilities"]
+keywords = ["error", "twelve-factor"]
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+notify = "7.0.0"
+snafu.workspace = true
+vfs = "0.12.0"
+
+[lints]
+workspace = true

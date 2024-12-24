@@ -13,28 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use std::{
+    collections::HashMap, io::Write, net::TcpListener, path::Path, sync::Arc, time::Duration,
+};
+
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use factor::child;
-use factor::env;
-use factor::identity;
-use factor::identity::IdProvider;
-use factor::ngrok;
-use factor::proxy;
-use factor::proxy::IncomingIdentity;
+use factor::{child, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
+use log::{debug, error, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::Write;
-use std::net::TcpListener;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::oneshot;
-use tokio::sync::watch;
-use tokio::time::sleep;
-
-use tokio::runtime::Runtime;
+use tokio::{
+    runtime::Runtime,
+    sync::{oneshot, watch},
+    time::sleep,
+};
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct GlobalConfig {
@@ -114,7 +107,7 @@ fn load_incoming_identity(path: &str) -> Result<IncomingIdentity, anyhow::Error>
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read incoming identity file at {}: {}", path, e))?;
     toml::from_str(&contents).or_else(|e| {
-        eprintln!("Failed to parse {path} as TOML, trying JSON: {e}");
+        warn!("Failed to parse {path} as TOML, trying JSON: {e}");
         serde_json::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Failed to parse {} as TOML or JSON: {}", path, e))
     })
@@ -318,7 +311,7 @@ fn handle_create(
     global_config: &GlobalConfig,
     config_path: &String,
 ) -> Result<(), anyhow::Error> {
-    println!("Creating application configuration");
+    info!("Creating application configuration");
 
     // Ensure we have global id config
     let global_id_config = global_config.id.as_ref().ok_or_else(|| {
@@ -379,12 +372,12 @@ fn handle_create(
     file.write_all(toml_string.as_bytes())
         .expect("Failed to write config file");
 
-    println!("Configuration written to {config_path}");
+    info!("Configuration written to {config_path}");
     Ok(())
 }
 
 fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<(), anyhow::Error> {
-    println!("Running id command");
+    trace!("Running id command");
 
     let mut targets_map = app_config
         .id
@@ -408,7 +401,7 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
     let provider = identity::create_provider(provider_config)?;
     let mut server = factor::server::Server::new();
     for (target_id, audience) in targets_map {
-        println!("adding identity for {target_id}");
+        debug!("adding identity for {target_id}");
         let identity_service = identity::IdentitySyncService::new(
             &app_config.path,
             &target_id,
@@ -431,7 +424,7 @@ fn handle_proxy(
     ipv6: bool,
     app_config: &AppConfig,
 ) -> Result<(), anyhow::Error> {
-    println!("Running proxy command");
+    trace!("Running proxy command");
     let incoming_identity = get_incoming_identity(incoming_identity)?;
     let runtime: Arc<Runtime> = Runtime::new()?.into();
     maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
@@ -442,7 +435,7 @@ fn handle_proxy(
         .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
     let provider = identity::create_provider(&id.provider.settings)?;
 
-    println!("Proxying port {port} to {child_port}");
+    info!("Proxying port {port} to {child_port}");
     let mut server = factor::server::Server::new_from_runtime(runtime);
     let proxy_service = proxy::get_proxy_service(
         port,
@@ -505,7 +498,7 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
         }
     })?;
     if let Err(e) = fswatcher.watch(Path::new(".env"), RecursiveMode::NonRecursive) {
-        println!("Error watching .env: {e}");
+        error!("Error watching .env: {e}");
     } else {
         // forget the watcher so it continues to function
         std::mem::forget(fswatcher);
@@ -524,7 +517,7 @@ fn handle_run(
     if command.is_empty() {
         anyhow::bail!("run command requires a subcommand to execute");
     }
-    println!("Running run command");
+    trace!("Running run command");
 
     let runtime: Arc<Runtime> = Runtime::new()?.into();
     let ngrok_url = maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
@@ -552,12 +545,12 @@ fn handle_run(
             }
             sleep(Duration::from_millis(300)).await;
 
-            println!("Sending shutdown signal to all services...");
+            info!("Sending shutdown signal to all services...");
             server.shutdown();
 
             file_tx.send(false)?;
 
-            println!("All services shut down. Restarting...");
+            info!("All services shut down. Restarting...");
         }
     })
 }
@@ -595,7 +588,7 @@ fn add_services(
         .unwrap()
         .port();
 
-    println!("Proxying port {port} to {child_port}");
+    debug!("Proxying port {port} to {child_port}");
     let proxy_service = proxy::get_proxy_service(
         port,
         child_port,
@@ -628,14 +621,14 @@ fn add_services(
 fn get_incoming_identity(
     incoming_identity_path: Option<&String>,
 ) -> Result<IncomingIdentity, anyhow::Error> {
-    println!("incoming identity path: {incoming_identity_path:?}");
+    debug!("incoming identity path: {incoming_identity_path:?}");
     let incoming_identity = match incoming_identity_path {
         Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,
         None => IncomingIdentity::default(),
     };
     let incoming_identity = if incoming_identity.is_empty() {
         env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
-            println!("No INCOMING_IDENTITY specified, using default. Error: {e:?}");
+            warn!("No INCOMING_IDENTITY specified, using default. Error: {e:?}");
             HashMap::default()
         })
     } else {

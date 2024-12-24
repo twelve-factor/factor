@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+use log::{error, trace, warn};
 /*
  * Copyright 2024 The Twelve-Factor Authors
  *
@@ -14,12 +16,12 @@
  * limitations under the License.
  */
 use tokio::process::Command;
+use tokio::{
+    sync::watch,
+    time::{sleep, Duration},
+};
 
-use super::env;
-use super::server::Service;
-use async_trait::async_trait;
-use tokio::sync::watch;
-use tokio::time::{sleep, Duration};
+use super::{env, server::Service};
 
 pub struct ChildService {
     command: Vec<String>,
@@ -47,13 +49,13 @@ impl Service for ChildService {
                 match env::var(key) {
                     Ok(val) if !val.is_empty() => success = true,
                     Ok(_) | Err(_) => {
-                        eprintln!("Failed to get value for env var {key}: Retrying in 100ms...");
+                        warn!("Failed to get value for env var {key}: Retrying in 100ms...");
                         sleep(Duration::from_millis(100)).await;
                     }
                 }
             }
         }
-        println!("starting child");
+        trace!("starting child");
         match Command::new(&self.command[0])
             .args(&self.command[1..])
             .env("PORT", self.port.to_string())
@@ -65,15 +67,15 @@ impl Service for ChildService {
                 tokio::select! {
                     _ = shutdown.changed() => {
                         if let Err(e) = child.kill().await {
-                            eprintln!("Failed to kill child process: {e}");
+                            warn!("Failed to kill child process: {e}");
                         } else {
-                            println!("Child process killed successfully");
+                            trace!("Child process killed successfully");
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to start command: {e}");
+                error!("Failed to start command: {e}");
             }
         }
     }

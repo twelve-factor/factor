@@ -1,0 +1,52 @@
+
+[package]
+name = "factor"
+version = "0.1.0"
+description = "Run twelve-factor apps locally"
+repository = "https://github.com/twelve-factor/factor"
+keywords = ["container", "kubernetes", "platform", "twelve-factor"]
+categories = ["command-line-utilities", "configuration", "development-tools"]
+readme = "../README.md"
+
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+base64 = "0.22"
+biscuit = "0.7.0"
+chrono = "0.4"
+clap = { version = "4.5.23", features = ["derive", "env"] }
+dirs = "5.0"
+dotenvy = "0.15.7"
+env_logger = "0.11.5"
+http = "1.1.0"
+jsonwebtoken = "9.3"
+k8s-openapi = { version = "0.23.0", features = ["latest"] }
+kube = { version = "0.97.0", features = ["derive", "runtime"] }
+log = "0.4.22"
+ngrok = "0.13.1"
+notify = "7.0.0"
+num-bigint = "0.4.6"
+pingora = "0.4.0"
+pingora-core = "0.4.0"
+pingora-http = "0.4.0"
+pingora-proxy = "0.4.0"
+rand = "0.8.5"
+regex = "1.11"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+# this version has a timing vulnerability that will be fixed via https://github.com/RustCrypto/RSA/pull/394
+rsa = "0.9.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_with = "3.11"
+sha2 = "0.10.8"
+shellexpand = "3.1.0"
+strum_macros = "0.26"
+tempfile = "3.14.0"
+tokio = { version = "1.41", features = ["full"] }
+toml = "0.8"
+
+[dev-dependencies]
+xshell = "0.2.7"

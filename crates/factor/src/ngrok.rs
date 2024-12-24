@@ -15,11 +15,12 @@
  */
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use super::server::Service;
 use async_trait::async_trait;
+use log::{error, info, trace, warn};
 use ngrok::prelude::*;
-use tokio::sync::oneshot;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
+
+use super::server::Service;
 
 pub struct NgrokService {
     port: u16,
@@ -51,14 +52,14 @@ impl Service for NgrokService {
         {
             Ok(session) => session,
             Err(e) => {
-                println!("Failed to connect to ngrok: {e}");
+                error!("Failed to connect to ngrok: {e}");
                 return;
             }
         };
         let mut listener = match session.http_endpoint().listen().await {
             Ok(listener) => listener,
             Err(e) => {
-                println!("Failed to listen on ngrok: {e}");
+                error!("Failed to listen on ngrok: {e}");
                 return;
             }
         };
@@ -72,18 +73,18 @@ impl Service for NgrokService {
         // Start forwarding in a background task
         let forward_task = tokio::spawn(async move {
             if let Err(e) = listener.forward_tcp(addr).await {
-                eprintln!("Failed to forward traffic to localhost: {e}");
+                error!("Failed to forward traffic to localhost: {e}");
             }
         });
 
-        println!("Forwarding to: http://localhost:{}", self.port);
-        println!("Ingress URL: {ingress_url}");
+        info!("Forwarding to: http://localhost:{}", self.port);
+        info!("Ingress URL: {ingress_url}");
         if let Some(tx) = self.tx.take() {
             if let Err(e) = tx.send(ingress_url) {
-                eprintln!("Failed to send URL: {e}");
+                warn!("Failed to send URL: {e}");
             }
         } else {
-            eprintln!("Sender has already been used or is not available");
+            warn!("Sender has already been used or is not available");
         }
 
         // Wait for either shutdown signal or listener completion
@@ -91,11 +92,11 @@ impl Service for NgrokService {
             _ = shutdown.changed() => {
                 // Shutdown signal received, gracefully stop the listener
                 if let Err(e) = session.close().await {
-                    eprintln!("Failed to close ngrok listener: {e}");
+                    error!("Failed to close ngrok listener: {e}");
                 }
             }
             _ = forward_task => {
-                println!("Forwarding task completed.");
+                trace!("Forwarding task completed.");
             }
         }
     }
