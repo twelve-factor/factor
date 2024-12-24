@@ -13,18 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use std::{
+    borrow::Cow,
+    env,
+    env::VarError,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use anyhow::Result;
 use notify::{Event, RecursiveMode, Watcher};
 use reqwest;
 use serde::de::DeserializeOwned;
 use shellexpand::LookupError;
-use std::borrow::Cow;
-use std::env;
-use std::env::VarError;
-use std::ffi::OsStr;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 // Callbacks can be either string or typed
 pub type StringCallback = Arc<dyn Fn(String) + Send + Sync>;

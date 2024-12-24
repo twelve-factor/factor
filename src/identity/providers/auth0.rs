@@ -13,12 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use crate::identity::{IdentityProvider, ProviderConfig};
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+use crate::identity::{IdentityProvider, ProviderConfig};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {

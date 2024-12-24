@@ -13,29 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use std::{
+    collections::HashMap, io::Write, net::TcpListener, path::Path, sync::Arc, time::Duration,
+};
+
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use factor::child;
-use factor::env;
-use factor::identity;
-use factor::identity::IdProvider;
-use factor::ngrok;
-use factor::proxy;
-use factor::proxy::IncomingIdentity;
+use factor::{child, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
 use log::{debug, error, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::Write;
-use std::net::TcpListener;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::oneshot;
-use tokio::sync::watch;
-use tokio::time::sleep;
-
-use tokio::runtime::Runtime;
+use tokio::{
+    runtime::Runtime,
+    sync::{oneshot, watch},
+    time::sleep,
+};
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct GlobalConfig {

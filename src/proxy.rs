@@ -14,22 +14,26 @@
  * limitations under the License.
  */
 
-use super::identity;
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
+};
+
 use async_trait::async_trait;
+use biscuit::{jwk::JWKSet, Empty};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use log::{info, trace, warn};
 use pingora::{server::configuration::ServerConf, services::listening::Service};
-use pingora_core::upstreams::peer::HttpPeer;
-use pingora_core::Result;
+use pingora_core::{upstreams::peer::HttpPeer, Result};
 use pingora_http::{RequestHeader, ResponseHeader};
 use pingora_proxy::{HttpProxy, ProxyHttp, Session};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde_json::json;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+
+use super::identity;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IdentityValidator {

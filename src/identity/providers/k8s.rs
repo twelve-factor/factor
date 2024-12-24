@@ -13,22 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use crate::identity::{IdentityProvider, ProviderConfig};
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use http::uri::Uri;
-use k8s_openapi::api::authentication::v1::{TokenRequest, TokenRequestSpec};
-use k8s_openapi::api::core::v1::ServiceAccount;
-use kube::config::KubeConfigOptions;
+use k8s_openapi::api::{
+    authentication::v1::{TokenRequest, TokenRequestSpec},
+    core::v1::ServiceAccount,
+};
 use kube::{
     api::{Api, PostParams},
+    config::KubeConfigOptions,
     Client,
 };
 use log::trace;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::sync::OnceCell;
+
+use crate::identity::{IdentityProvider, ProviderConfig};
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize)]

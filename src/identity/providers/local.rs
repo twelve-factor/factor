@@ -13,24 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, prelude::*};
+use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use rand::{rngs::StdRng, SeedableRng};
+use rsa::{
+    pkcs1::EncodeRsaPrivateKey, pkcs8::LineEnding, traits::PublicKeyParts, RsaPrivateKey,
+    RsaPublicKey,
+};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
 use crate::{
     env,
     identity::{IdentityProvider, ProviderConfig},
 };
-use anyhow::Context;
-use anyhow::Result;
-use async_trait::async_trait;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::prelude::*;
-use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use rand::{rngs::StdRng, SeedableRng};
-use rsa::pkcs1::EncodeRsaPrivateKey;
-use rsa::traits::PublicKeyParts;
-use rsa::{pkcs8::LineEnding, RsaPrivateKey, RsaPublicKey};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {

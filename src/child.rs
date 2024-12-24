@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use log::{error, trace, warn};
 /*
  * Copyright 2024 The Twelve-Factor Authors
@@ -15,12 +16,12 @@ use log::{error, trace, warn};
  * limitations under the License.
  */
 use tokio::process::Command;
+use tokio::{
+    sync::watch,
+    time::{sleep, Duration},
+};
 
-use super::env;
-use super::server::Service;
-use async_trait::async_trait;
-use tokio::sync::watch;
-use tokio::time::{sleep, Duration};
+use super::{env, server::Service};
 
 pub struct ChildService {
     command: Vec<String>,

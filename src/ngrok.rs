@@ -15,12 +15,12 @@
  */
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use super::server::Service;
 use async_trait::async_trait;
 use log::{error, info, trace, warn};
 use ngrok::prelude::*;
-use tokio::sync::oneshot;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
+
+use super::server::Service;
 
 pub struct NgrokService {
     port: u16,

@@ -26,9 +26,11 @@ fn check_code_formatting() {
 
     let sh = xshell::Shell::new().unwrap();
 
-    let res = cmd!(sh, "cargo fmt -- --check").run();
+    let res = cmd!(sh, "cargo +nightly fmt --check").run();
     if res.is_err() {
-        let _ = cmd!(sh, "cargo fmt").run();
+        let _ = cmd!(sh, "cargo +nightly fmt").run();
     }
+
+    // fail test intentionally if formatting occurs so that the test will fail in CI
     res.unwrap();
 }
