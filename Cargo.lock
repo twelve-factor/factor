@@ -838,6 +838,7 @@ dependencies = [
  "jsonwebtoken",
  "k8s-openapi",
  "kube",
+ "log",
  "ngrok",
  "notify",
  "num-bigint",

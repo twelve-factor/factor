@@ -25,6 +25,7 @@ use kube::{
     api::{Api, PostParams},
     Client,
 };
+use log::trace;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::sync::OnceCell;
@@ -128,7 +129,7 @@ impl IdentityProvider for Provider {
             .await
             .context("Failed to create service account")?;
 
-        println!("Created service account: {}", sa_name);
+        trace!("Created service account: {}", sa_name);
 
         // Create new config with service account name
         let mut config = self.config.clone();

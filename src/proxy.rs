@@ -16,8 +16,7 @@
 
 use super::identity;
 use async_trait::async_trait;
-use biscuit::jwk::JWKSet;
-use biscuit::Empty;
+use log::{info, trace, warn};
 use pingora::{server::configuration::ServerConf, services::listening::Service};
 use pingora_core::upstreams::peer::HttpPeer;
 use pingora_core::Result;
@@ -146,7 +145,7 @@ impl AuthProxy {
         let mut validation = Validation::new(Algorithm::RS256);
         // audience is validated manually below
         validation.validate_aud = false;
-        println!("Decoding token {token}");
+        trace!("Decoding token {token}");
         let data = decode::<identity::Claims>(token, &decoding_key, &validation)?;
 
         for (key, val) in &self.incoming_identity {
@@ -195,7 +194,7 @@ impl ProxyHttp for AuthProxy {
         if session.req_header().uri.path().starts_with("/.well-known/") {
             if let Ok(Some((iss, jwks))) = self.provider.get_iss_and_jwks().await {
                 if let Err(e) = self.handle_well_known(session, iss, jwks).await {
-                    println!("Failed to handle well_known {e:?}");
+                    info!("Failed to handle well_known {e:?}");
                     let _ = session.respond_error(500).await;
                     return Ok(true);
                 }
@@ -211,10 +210,10 @@ impl ProxyHttp for AuthProxy {
                 return Ok(false);
             }
             Ok(None) => {
-                println!("No token included");
+                trace!("No token included");
             }
             Err(e) => {
-                println!("Token validation failed {e:?}");
+                warn!("Token validation failed {e:?}");
             }
         }
         if self.reject_unknown {
@@ -237,7 +236,7 @@ impl ProxyHttp for AuthProxy {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), self.port)
         };
 
-        println!("connecting to {addr:?}");
+        trace!("connecting to {addr:?}");
 
         let peer = Box::new(HttpPeer::new(addr, false, HOST.to_owned()));
         Ok(peer)

@@ -19,15 +19,7 @@ use super::env;
 use super::server::Service;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
-use regex::Regex;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::watch;
-use tokio::time::interval;
-
+use log::{error, info, trace, warn};
 pub use providers::*;
 
 use serde::{Deserialize, Serialize};
@@ -130,7 +122,7 @@ impl IdentitySyncService {
 impl Service for IdentitySyncService {
     async fn start(&mut self, mut shutdown: watch::Receiver<bool>) {
         if let Err(e) = self.provider.ensure_audience(&self.audience).await {
-            println!(
+            warn!(
                 "Failed to create or verify API for audience {}: {}",
                 self.audience, e
             );
@@ -148,26 +140,26 @@ impl Service for IdentitySyncService {
                         Ok(token) => {
                             match env::set_var_file(&self.key, &token, &self.path) {
                                 Ok(()) => {
-                                    println!("Successfully wrote token for audience {} to file", self.audience);
+                                    trace!("Successfully wrote token for audience {} to file", self.audience);
                                     match get_claims(&token) {
                                         Ok(claims) => {
                                             match serde_json::to_string_pretty(&claims) {
-                                                Ok(json_output) => println!("{json_output}"),
-                                                Err(e) => eprintln!("Failed to convert to JSON: {e}"),
+                                                Ok(json_output) => trace!("{json_output}"),
+                                                Err(e) => error!("Failed to convert to JSON: {e}"),
                                             }
                                         }
                                         Err(e) => {
-                                            eprintln!("Failed to get claims for token: {e}");
-                                            println!("Token prefix: {}", &token[..6]);
+                                            error!("Failed to get claims for token: {e}");
+                                            info!("Token prefix: {}", &token[..6]);
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("Failed to write token to file for audience {}: {}", self.audience, e);
+                                    error!("Failed to write token to file for audience {}: {}", self.audience, e);
                                 }
                             }
                         }
-                        Err(e) => eprintln!("Failed to get token for audience {}: {}", self.audience, e),
+                        Err(e) => error!("Failed to get token for audience {}: {}", self.audience, e),
                     }
                 }
             }
