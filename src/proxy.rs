@@ -99,9 +99,8 @@ impl AuthProxy {
 
     async fn validate_token(&self, req: &RequestHeader) -> anyhow::Result<Option<String>> {
         let auth_header = req.headers.get("Authorization");
-        let auth_header = match auth_header {
-            Some(header) => header,
-            None => return Ok(None),
+        let Some(auth_header) = auth_header else {
+            return Ok(None);
         };
         let parts: Vec<&str> = auth_header.to_str()?.split(' ').collect();
         if parts.len() != 2 || parts[0] != "Bearer" {
@@ -121,7 +120,7 @@ impl AuthProxy {
         } else {
             // handle the case where the issuer includes a trailing slash
             let iss = unvalidated_claims.iss.trim_end_matches('/');
-            let openid_config_url = format!("{}/.well-known/openid-configuration", iss);
+            let openid_config_url = format!("{iss}/.well-known/openid-configuration");
             let openid_config_response = self.client.get(&openid_config_url).send().await?;
             let openid_config: serde_json::Value = openid_config_response.json().await?;
             let jwks_uri = openid_config["jwks_uri"]
@@ -147,10 +146,10 @@ impl AuthProxy {
         let mut validation = Validation::new(Algorithm::RS256);
         // audience is validated manually below
         validation.validate_aud = false;
-        println!("Decoding token {}", token);
+        println!("Decoding token {token}");
         let data = decode::<identity::Claims>(token, &decoding_key, &validation)?;
 
-        for (key, val) in self.incoming_identity.iter() {
+        for (key, val) in &self.incoming_identity {
             let iss_match = match &val.iss {
                 Some(iss) => Regex::new(iss).unwrap().is_match(&data.claims.iss),
                 None => true,
@@ -252,7 +251,7 @@ pub fn get_proxy_service(
     reject_unknown: bool,
     ipv6: bool,
     provider: Arc<dyn identity::IdentityProvider + Send + Sync>,
-) -> anyhow::Result<Service<HttpProxy<AuthProxy>>> {
+) -> Service<HttpProxy<AuthProxy>> {
     let conf = Arc::new(ServerConf::default());
     let mut proxy = pingora_proxy::http_proxy_service(
         &conf,
@@ -263,11 +262,11 @@ pub fn get_proxy_service(
             incoming_identity,
             key_cache: Mutex::new(HashMap::new()),
             client: reqwest::Client::new(),
-            provider: provider,
+            provider,
         },
     );
-    proxy.add_tcp(format!("[::]:{}", port).as_str());
-    Ok(proxy)
+    proxy.add_tcp(format!("[::]:{port}").as_str());
+    proxy
 }
 
 #[async_trait]

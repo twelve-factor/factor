@@ -28,6 +28,7 @@ pub struct ChildService {
 }
 
 impl ChildService {
+    #[must_use]
     pub fn new(command: Vec<String>, port: u16, wait_for: Vec<String>) -> Self {
         ChildService {
             command,
@@ -46,10 +47,7 @@ impl Service for ChildService {
                 match env::var(key) {
                     Ok(val) if !val.is_empty() => success = true,
                     Ok(_) | Err(_) => {
-                        eprintln!(
-                            "Failed to get value for env var {}: Retrying in 100ms...",
-                            key
-                        );
+                        eprintln!("Failed to get value for env var {key}: Retrying in 100ms...");
                         sleep(Duration::from_millis(100)).await;
                     }
                 }
@@ -67,7 +65,7 @@ impl Service for ChildService {
                 tokio::select! {
                     _ = shutdown.changed() => {
                         if let Err(e) = child.kill().await {
-                            eprintln!("Failed to kill child process: {}", e);
+                            eprintln!("Failed to kill child process: {e}");
                         } else {
                             println!("Child process killed successfully");
                         }
@@ -75,7 +73,7 @@ impl Service for ChildService {
                 }
             }
             Err(e) => {
-                eprintln!("Failed to start command: {}", e);
+                eprintln!("Failed to start command: {e}");
             }
         }
     }

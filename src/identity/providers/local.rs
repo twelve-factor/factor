@@ -47,6 +47,17 @@ pub struct Provider {
     jwks: JWKSet<CommonParameters>,
 }
 
+/// # Errors
+///
+/// If `secret` is not valid base64, returns a [`base64::DecodeError`]
+///
+/// There are two additional low-level errors that can occur, but they are
+/// extremely unlikely to occur with a 2048-bit key:
+///
+/// - Cannot find suitable prime numbers
+/// - Generated key doesn't meet cryptographic requirements
+///
+/// TODO: Unwrap these error cases
 fn generate_rsa_key_from_secret(secret: &str) -> Result<RsaPrivateKey> {
     let decoded_secret = BASE64_STANDARD.decode(secret)?;
 
@@ -85,7 +96,7 @@ fn public_key_to_jwk(public_key: &RsaPublicKey, kid: &str) -> JWK<CommonParamete
             e,
             ..Default::default()
         }),
-        additional: Default::default(),
+        additional: CommonParameters::default(),
     }
 }
 
@@ -98,6 +109,16 @@ fn generate_kid(public_key: &RsaPublicKey) -> String {
 }
 
 impl Provider {
+    /// # Errors
+    ///
+    /// Common errors:
+    /// - `config.secret` is not valid base64
+    ///
+    /// Rare errors:
+    /// - RSA key generation fails (see `generate_rsa_key_from_secret`)
+    /// - The generated key cannot be encoded in PKCS#1 PEM format (extremely unlikely,
+    ///   would indicate internal key corruption)
+    /// - The PEM-encoded key cannot be converted to JWT format
     pub fn new(config: Config) -> Result<Self> {
         let private_key = generate_rsa_key_from_secret(&config.secret)?;
         let private_key_pem = private_key.to_pkcs1_pem(LineEnding::CR)?.to_string();
@@ -120,7 +141,7 @@ struct Claims {
     iss: String,
     sub: String,
     aud: String,
-    exp: usize,
+    exp: u64,
 }
 
 #[async_trait]
@@ -156,7 +177,7 @@ impl IdentityProvider for Provider {
             aud: audience.to_string(),
             exp: (SystemTime::now() + std::time::Duration::from_secs(1800)) // Expiration time (30 minutes from now)
                 .duration_since(UNIX_EPOCH)?
-                .as_secs() as usize,
+                .as_secs(),
         };
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());

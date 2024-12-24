@@ -1,0 +1,12 @@
+{
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.restartServerOnConfigChange": true,
+  "rust-analyzer.testExplorer": true,
+  "rust-analyzer.diagnostics.styleLints.enable": true,
+  "rust-analyzer.assist.emitMustUse": true,
+  "rust-analyzer.semanticHighlighting.operator.specialization.enable": true,
+  "rust-analyzer.semanticHighlighting.punctuation.enable": true,
+  "rust-analyzer.semanticHighlighting.punctuation.separate.macro.bang": true,
+  "rust-analyzer.semanticHighlighting.punctuation.specialization.enable": true,
+}

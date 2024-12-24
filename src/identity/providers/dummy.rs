@@ -40,6 +40,10 @@ pub struct Provider {
 }
 
 impl Provider {
+    /// # Errors
+    ///
+    /// The dummy provider is infallible, but `Provider::new` returns a Result for
+    /// compatibility with the `identity_providers!` macro
     pub fn new(config: Config) -> Result<Self> {
         Ok(Self { config })
     }

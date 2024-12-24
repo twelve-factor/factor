@@ -29,18 +29,14 @@ pub struct NgrokService {
 }
 
 impl NgrokService {
-    pub fn new(
-        tx: oneshot::Sender<String>,
-        port: u16,
-        ipv6: bool,
-        token: String,
-    ) -> anyhow::Result<Self> {
-        Ok(NgrokService {
+    #[must_use]
+    pub fn new(tx: oneshot::Sender<String>, port: u16, ipv6: bool, token: String) -> Self {
+        NgrokService {
             port,
             token,
             ipv6,
             tx: Some(tx),
-        })
+        }
     }
 }
 
@@ -55,14 +51,14 @@ impl Service for NgrokService {
         {
             Ok(session) => session,
             Err(e) => {
-                println!("Failed to connect to ngrok: {}", e);
+                println!("Failed to connect to ngrok: {e}");
                 return;
             }
         };
         let mut listener = match session.http_endpoint().listen().await {
             Ok(listener) => listener,
             Err(e) => {
-                println!("Failed to listen on ngrok: {}", e);
+                println!("Failed to listen on ngrok: {e}");
                 return;
             }
         };
@@ -76,15 +72,15 @@ impl Service for NgrokService {
         // Start forwarding in a background task
         let forward_task = tokio::spawn(async move {
             if let Err(e) = listener.forward_tcp(addr).await {
-                eprintln!("Failed to forward traffic to localhost: {}", e);
+                eprintln!("Failed to forward traffic to localhost: {e}");
             }
         });
 
         println!("Forwarding to: http://localhost:{}", self.port);
-        println!("Ingress URL: {}", ingress_url);
+        println!("Ingress URL: {ingress_url}");
         if let Some(tx) = self.tx.take() {
             if let Err(e) = tx.send(ingress_url) {
-                eprintln!("Failed to send URL: {}", e);
+                eprintln!("Failed to send URL: {e}");
             }
         } else {
             eprintln!("Sender has already been used or is not available");
@@ -95,7 +91,7 @@ impl Service for NgrokService {
             _ = shutdown.changed() => {
                 // Shutdown signal received, gracefully stop the listener
                 if let Err(e) = session.close().await {
-                    eprintln!("Failed to close ngrok listener: {}", e);
+                    eprintln!("Failed to close ngrok listener: {e}");
                 }
             }
             _ = forward_task => {

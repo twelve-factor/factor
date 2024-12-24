@@ -15,7 +15,6 @@
  */
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use env_logger;
 use factor::child;
 use factor::env;
 use factor::identity;
@@ -115,7 +114,7 @@ fn load_incoming_identity(path: &str) -> Result<IncomingIdentity, anyhow::Error>
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read incoming identity file at {}: {}", path, e))?;
     toml::from_str(&contents).or_else(|e| {
-        eprintln!("Failed to parse {} as TOML, trying JSON: {}", path, e);
+        eprintln!("Failed to parse {path} as TOML, trying JSON: {e}");
         serde_json::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Failed to parse {} as TOML or JSON: {}", path, e))
     })
@@ -131,10 +130,16 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
-fn parse_target<T: AsRef<str>, U: AsRef<str>>(s: &str) -> Result<(T, U), String>
+
+/// # Errors
+///
+/// This function is infallible, but `parse_target` returns a Result for
+/// compatibility with the `clap::value_parser!` macro
+#[allow(clippy::unnecessary_wraps)]
+fn parse_target<T, U>(s: &str) -> Result<(T, U), String>
 where
-    T: From<String>,
-    U: From<String>,
+    T: From<String> + AsRef<str>,
+    U: From<String> + AsRef<str>,
 {
     let pos = s.find('=');
     match pos {
@@ -173,7 +178,7 @@ enum Commands {
         #[arg(long = "target", action = clap::ArgAction::Append, value_parser = parse_target::<String, String>)]
         targets: Vec<(String, String)>,
     },
-    /// Proxy from PORT to CHILD_PORT
+    /// Proxy from `PORT` to `CHILD_PORT`
     Proxy {
         /// Reject requests from unknown clients
         #[arg(long, default_value = "false")]
@@ -240,7 +245,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .and_then(|id| id.providers.iter().find(|p| &p.name == *default_provider))
             {
                 app_config.id = Some(AppIdConfig {
-                    name: default_provider.to_string(),
+                    name: (*default_provider).to_string(),
                     provider: provider_config.clone(),
                     targets: vec![("default".to_string(), "default".to_string())]
                         .into_iter()
@@ -259,7 +264,7 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             handle_create(
                 app,
-                id_provider,
+                id_provider.as_ref(),
                 path,
                 id_targets,
                 &global_config,
@@ -279,7 +284,7 @@ fn main() -> Result<(), anyhow::Error> {
             handle_proxy(
                 *port,
                 *child_port,
-                incoming_identity,
+                incoming_identity.as_ref(),
                 *reject_unknown,
                 *ipv6,
                 &app_config,
@@ -297,7 +302,7 @@ fn main() -> Result<(), anyhow::Error> {
                 *port,
                 *reject_unknown,
                 *ipv6,
-                incoming_identity,
+                incoming_identity.as_ref(),
                 &app_config,
             )?;
         }
@@ -307,9 +312,9 @@ fn main() -> Result<(), anyhow::Error> {
 
 fn handle_create(
     app: &String,
-    id_provider: &Option<String>,
+    id_provider: Option<&String>,
     path: &String,
-    id_targets: &Vec<(String, String)>,
+    id_targets: &[(String, String)],
     global_config: &GlobalConfig,
     config_path: &String,
 ) -> Result<(), anyhow::Error> {
@@ -355,7 +360,7 @@ fn handle_create(
     let provider = identity::create_provider(&id_config.settings)?;
 
     let rt = Runtime::new()?;
-    id_config.settings = rt.block_on(provider.configure_app_identity(&app))?;
+    id_config.settings = rt.block_on(provider.configure_app_identity(app))?;
 
     let app_config = AppConfig {
         app: app.to_string(),
@@ -364,7 +369,7 @@ fn handle_create(
         id: Some(AppIdConfig {
             name: provider_name.to_string(),
             provider: id_config,
-            targets: id_targets.into_iter().cloned().collect(),
+            targets: id_targets.iter().cloned().collect(),
         }),
     };
 
@@ -374,7 +379,7 @@ fn handle_create(
     file.write_all(toml_string.as_bytes())
         .expect("Failed to write config file");
 
-    println!("Configuration written to {}", config_path);
+    println!("Configuration written to {config_path}");
     Ok(())
 }
 
@@ -400,10 +405,10 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
         .map(|id| &id.provider.settings)
         .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
 
-    let provider = identity::create_provider(&provider_config)?;
+    let provider = identity::create_provider(provider_config)?;
     let mut server = factor::server::Server::new();
     for (target_id, audience) in targets_map {
-        println!("adding identity for {}", target_id);
+        println!("adding identity for {target_id}");
         let identity_service = identity::IdentitySyncService::new(
             &app_config.path,
             &target_id,
@@ -421,7 +426,7 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
 fn handle_proxy(
     port: u16,
     child_port: u16,
-    incoming_identity: &Option<String>,
+    incoming_identity: Option<&String>,
     reject_unknown: bool,
     ipv6: bool,
     app_config: &AppConfig,
@@ -429,7 +434,7 @@ fn handle_proxy(
     println!("Running proxy command");
     let incoming_identity = get_incoming_identity(incoming_identity)?;
     let runtime: Arc<Runtime> = Runtime::new()?.into();
-    maybe_run_background_ngrok(runtime.clone(), app_config, port, ipv6)?;
+    maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
 
     let id = app_config
         .id
@@ -437,7 +442,7 @@ fn handle_proxy(
         .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
     let provider = identity::create_provider(&id.provider.settings)?;
 
-    println!("Proxying port {} to {}", port, child_port);
+    println!("Proxying port {port} to {child_port}");
     let mut server = factor::server::Server::new_from_runtime(runtime);
     let proxy_service = proxy::get_proxy_service(
         port,
@@ -446,7 +451,7 @@ fn handle_proxy(
         reject_unknown,
         ipv6,
         provider.clone(),
-    )?;
+    );
     server.add_service(proxy_service);
     server.run();
     server.wait_for_exit();
@@ -454,16 +459,16 @@ fn handle_proxy(
 }
 
 fn maybe_run_background_ngrok(
-    runtime: Arc<Runtime>,
+    runtime: &Runtime,
     app_config: &AppConfig,
     port: u16,
     ipv6: bool,
-) -> Result<Option<String>, anyhow::Error> {
+) -> Option<String> {
     if let Some(ngrok_config) = &app_config.ngrok {
         if !ngrok_config.token.is_empty() {
             let (tx, rx) = oneshot::channel();
             let ngrok_service =
-                ngrok::NgrokService::new(tx, port, ipv6, ngrok_config.token.clone())?;
+                ngrok::NgrokService::new(tx, port, ipv6, ngrok_config.token.clone());
             std::thread::spawn(move || {
                 // ngrok needs to run in a separate thread so we create a new runtime for it.
                 let ngrok_runtime: Arc<Runtime> =
@@ -482,10 +487,11 @@ fn maybe_run_background_ngrok(
                 }
             });
 
-            return Ok(url);
+            return url;
         }
     }
-    Ok(None)
+
+    None
 }
 
 fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), anyhow::Error> {
@@ -499,7 +505,7 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
         }
     })?;
     if let Err(e) = fswatcher.watch(Path::new(".env"), RecursiveMode::NonRecursive) {
-        println!("Error watching .env: {}", e);
+        println!("Error watching .env: {e}");
     } else {
         // forget the watcher so it continues to function
         std::mem::forget(fswatcher);
@@ -508,11 +514,11 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
 }
 
 fn handle_run(
-    command: &Vec<String>,
+    command: &[String],
     port: u16,
     reject_unknown: bool,
     ipv6: bool,
-    incoming_identity: &Option<String>,
+    incoming_identity: Option<&String>,
     app_config: &AppConfig,
 ) -> Result<(), anyhow::Error> {
     if command.is_empty() {
@@ -521,7 +527,7 @@ fn handle_run(
     println!("Running run command");
 
     let runtime: Arc<Runtime> = Runtime::new()?.into();
-    let ngrok_url = maybe_run_background_ngrok(runtime.clone(), app_config, port, ipv6)?;
+    let ngrok_url = maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
     if let Some(url) = ngrok_url {
         env::set_var("NGROK_URL", url);
     };
@@ -559,11 +565,11 @@ fn handle_run(
 fn add_services(
     server: &mut factor::server::Server,
     app_config: &AppConfig,
-    incoming_identity: &Option<String>,
+    incoming_identity: Option<&String>,
     port: u16,
     reject_unknown: bool,
     ipv6: bool,
-    command: &Vec<String>,
+    command: &[String],
 ) -> Result<(), anyhow::Error> {
     dotenv().ok();
     let incoming_identity = get_incoming_identity(incoming_identity)?;
@@ -589,7 +595,7 @@ fn add_services(
         .unwrap()
         .port();
 
-    println!("Proxying port {} to {}", port, child_port);
+    println!("Proxying port {port} to {child_port}");
     let proxy_service = proxy::get_proxy_service(
         port,
         child_port,
@@ -597,7 +603,7 @@ fn add_services(
         reject_unknown,
         ipv6,
         provider.clone(),
-    )?;
+    );
     server.add_service(proxy_service);
 
     let mut waiters = vec![];
@@ -620,24 +626,22 @@ fn add_services(
 }
 
 fn get_incoming_identity(
-    incoming_identity_path: &Option<String>,
+    incoming_identity_path: Option<&String>,
 ) -> Result<IncomingIdentity, anyhow::Error> {
-    println!("incoming identity path: {:?}", incoming_identity_path);
+    println!("incoming identity path: {incoming_identity_path:?}");
     let incoming_identity = match incoming_identity_path {
         Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,
         None => IncomingIdentity::default(),
     };
-    let incoming_identity = if !incoming_identity.is_empty() {
+    let incoming_identity = if incoming_identity.is_empty() {
+        env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
+            println!("No INCOMING_IDENTITY specified, using default. Error: {e:?}");
+            HashMap::default()
+        })
+    } else {
         env::set_var("INCOMING_IDENTITY", toml::to_string(&incoming_identity)?);
         incoming_identity
-    } else {
-        env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
-            println!(
-                "No INCOMING_IDENTITY specified, using default. Error: {:?}",
-                e
-            );
-            Default::default()
-        })
     };
+
     Ok(incoming_identity)
 }

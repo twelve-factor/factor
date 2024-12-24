@@ -34,6 +34,13 @@ pub struct Provider {
 }
 
 impl Provider {
+    /// # Errors
+    ///
+    /// Returns `anyhow::Error` if:
+    ///
+    /// - `config.issuer` is not set
+    /// - `config.client_id` is not set
+    /// - `config.client_secret` is not set
     pub fn new(config: Config) -> Result<Self> {
         if config.issuer.is_none() {
             anyhow::bail!("auth0 issuer must be configured");
@@ -53,7 +60,7 @@ impl Provider {
 
     async fn get_management_token(&self) -> Result<String> {
         let issuer = self.config.issuer.as_ref().unwrap();
-        let management_token_url = format!("{}/oauth/token", issuer);
+        let management_token_url = format!("{issuer}/oauth/token");
 
         let data = json!({
             "grant_type": "client_credentials",
@@ -101,7 +108,7 @@ impl IdentityProvider for Provider {
         let issuer = self.config.issuer.as_ref().unwrap();
         let management_token = self.get_management_token().await?;
 
-        let apps_url = format!("{}/api/v2/clients", issuer);
+        let apps_url = format!("{issuer}/api/v2/clients");
         let app_data = json!({
             "name": name,
             "app_type": "non_interactive",
@@ -111,10 +118,7 @@ impl IdentityProvider for Provider {
         let app_response: Value = self
             .client
             .post(&apps_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", management_token),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&app_data)
             .send()
             .await?
@@ -134,7 +138,7 @@ impl IdentityProvider for Provider {
             "delete:client_grants",
         ];
 
-        let client_grants_url = format!("{}/api/v2/client-grants", issuer);
+        let client_grants_url = format!("{issuer}/api/v2/client-grants");
         let management_grant_data = json!({
             "client_id": client_id,
             "audience": format!("{}/api/v2/", issuer),
@@ -143,10 +147,7 @@ impl IdentityProvider for Provider {
 
         self.client
             .post(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", management_token),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&management_grant_data)
             .send()
             .await?
@@ -156,10 +157,7 @@ impl IdentityProvider for Provider {
         let grants: Vec<Value> = self
             .client
             .get(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", management_token),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -169,7 +167,7 @@ impl IdentityProvider for Provider {
         // Check if our grant exists with all the required scopes
         let grant_exists = grants.iter().any(|grant| {
             if grant["client_id"].as_str().unwrap() != client_id
-                || grant["audience"].as_str().unwrap() != format!("{}/api/v2/", issuer)
+                || grant["audience"].as_str().unwrap() != format!("{issuer}/api/v2/")
             {
                 return false;
             }
@@ -183,7 +181,7 @@ impl IdentityProvider for Provider {
 
             scopes
                 .iter()
-                .all(|required_scope| grant_scopes.contains(&required_scope.to_string()))
+                .all(|required_scope| grant_scopes.contains(&(*required_scope).to_string()))
         });
 
         if !grant_exists {
@@ -202,14 +200,11 @@ impl IdentityProvider for Provider {
 
         let management_token = self.get_management_token().await?;
 
-        let resource_servers_url = format!("{}/api/v2/resource-servers", issuer);
+        let resource_servers_url = format!("{issuer}/api/v2/resource-servers");
         let resource_servers: Vec<Value> = self
             .client
             .get(&resource_servers_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", management_token),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -220,7 +215,7 @@ impl IdentityProvider for Provider {
             .iter()
             .any(|server| server["identifier"] == json!(audience))
         {
-            let create_api_url = format!("{}/api/v2/resource-servers", issuer);
+            let create_api_url = format!("{issuer}/api/v2/resource-servers");
             let api_data = Auth0APIRequest {
                 name: audience.to_string(),
                 identifier: audience.to_string(),
@@ -231,24 +226,18 @@ impl IdentityProvider for Provider {
 
             self.client
                 .post(&create_api_url)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", management_token),
-                )
+                .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&api_data)
                 .send()
                 .await?
                 .error_for_status()?;
         }
 
-        let client_grants_url = format!("{}/api/v2/client-grants", issuer);
+        let client_grants_url = format!("{issuer}/api/v2/client-grants");
         let client_grants: Vec<Value> = self
             .client
             .get(&client_grants_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", management_token),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
             .await?
             .error_for_status()?
@@ -267,10 +256,7 @@ impl IdentityProvider for Provider {
 
             self.client
                 .post(&client_grants_url)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", management_token),
-                )
+                .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&client_grant_data)
                 .send()
                 .await?
@@ -282,7 +268,7 @@ impl IdentityProvider for Provider {
 
     async fn get_token(&self, audience: &str) -> Result<String> {
         let issuer = self.config.issuer.as_ref().unwrap();
-        let token_url = format!("{}/oauth/token", issuer);
+        let token_url = format!("{issuer}/oauth/token");
 
         let data = json!({
             "grant_type": "client_credentials",
