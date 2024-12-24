@@ -17,6 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use log::info;
 use tokio::{runtime::Runtime, sync::watch, task::JoinHandle};
 
 #[async_trait]
@@ -84,7 +85,7 @@ impl Server {
     ///
     /// Panics if the shutdown channel is already closed.
     pub fn shutdown(&mut self) {
-        println!("Sending shutdown signal to all services...");
+        info!("Sending shutdown signal to all services...");
         self.shutdown_tx
             .send(true)
             .expect("Failed to send shutdown signal");

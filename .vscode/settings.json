@@ -1,5 +1,8 @@
 {
   "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.rustfmt.extraArgs": [
+    "+nightly"
+  ],
   "rust-analyzer.checkOnSave": true,
   "rust-analyzer.restartServerOnConfigChange": true,
   "rust-analyzer.testExplorer": true,
