@@ -1,3 +1,3 @@
 mod create;
 
-pub use create::Create;
+pub use create::{parse_target, Create};

@@ -1,4 +1,4 @@
-mod env;
+pub mod env;
 pub mod identity;
 pub mod providers;
 

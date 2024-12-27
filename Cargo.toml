@@ -33,6 +33,7 @@ tokio = { version = "1.41", features = ["full"] }
 shellexpand = "3.1.0"
 error-stack = "0.5.0"
 jsonwebtoken = "9.3"
+toml = "0.8"
 
 # this version has a timing vulnerability that will be fixed via https://github.com/RustCrypto/RSA/pull/394
 rsa = "0.9.7"

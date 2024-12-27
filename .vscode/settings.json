@@ -1,12 +1,6 @@
 {
   "rust-analyzer.check.command": "clippy",
-  "rust-analyzer.check.extraArgs": [
-    "--profile",
-    "fast-dev"
-  ],
-  "rust-analyzer.rustfmt.extraArgs": [
-    "+nightly"
-  ],
+  "rust-analyzer.rustfmt.rangeFormatting.enable": true,
   "rust-analyzer.checkOnSave": true,
   "rust-analyzer.restartServerOnConfigChange": true,
   "rust-analyzer.testExplorer": true,

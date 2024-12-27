@@ -1,8 +1,12 @@
+use derive_more::derive::{Display, From};
 use snafu::{Location, Snafu};
 
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
-pub enum FactorError {
+pub enum FactorError
+where
+    Self: Send,
+{
     #[snafu(transparent)]
     Expected { source: ExpectedError },
 
@@ -11,16 +15,26 @@ pub enum FactorError {
 
     #[snafu(transparent)]
     Unexpected { source: UnexpectedError },
+}
 
-    #[snafu(whatever, display("{message}"))]
-    GenericError {
-        message: String,
+#[derive(Debug, Display)]
+pub enum ConfigSource {
+    #[display("app config (.factor-app)")]
+    App,
+    #[display("{name} provider config")]
+    Provider { name: String },
+    #[display("global config (~/.factor)")]
+    GlobalConfig,
+}
 
-        // Having a `source` is optional, but if it is present, it must
-        // have this specific attribute and type:
-        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
-        source: Option<Box<dyn std::error::Error>>,
-    },
+impl ConfigSource {
+    pub const GLOBAL: ConfigSource = ConfigSource::GlobalConfig;
+
+    pub fn provider(name: impl AsRef<str>) -> Self {
+        ConfigSource::Provider {
+            name: name.as_ref().to_string(),
+        }
+    }
 }
 
 /// Expected errors are caused by a problem with the user's configuration or
@@ -28,15 +42,39 @@ pub enum FactorError {
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
 pub enum ExpectedError {
-    EnvVarError {
+    StdEnvVarError {
+        source: std::env::VarError,
+    },
+
+    ShellexpandError {
         source: shellexpand::LookupError<std::env::VarError>,
     },
 
+    EnvVarError {},
+
     MissingConfigError {
-        config: String,
-        key: String,
+        config: ConfigSource,
+        at: ConfigLocation,
         #[snafu(implicit)]
         location: Location,
+    },
+
+    MissingHomeDir {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    IoError {
+        reason: String,
+        source: std::io::Error,
+    },
+
+    GenericError {
+        reason: String,
+    },
+
+    TomlError {
+        source: toml::de::Error,
     },
 
     KubeConfigError {
@@ -59,6 +97,15 @@ pub enum ExpectedError {
     },
 }
 
+#[derive(Debug, From)]
+pub enum ConfigLocation {
+    #[from(String, &str)]
+    Key(String),
+
+    #[from((String, String), (&str, &str))]
+    Expected { key: String, expected: String },
+}
+
 /// Unknown errors need to be reported to users, since we're not sure whether
 /// they reflect user errors or not, but we don't know enough about them to
 /// give them a user-friendly error message.
@@ -67,9 +114,21 @@ pub enum ExpectedError {
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
 pub enum UnknownError {
-    RsaError { source: rsa::errors::Error },
-    CryptoError { source: rsa::pkcs1::Error },
-    KubeClientProtocolError { message: String },
+    RsaError {
+        source: rsa::errors::Error,
+    },
+    CryptoError {
+        source: rsa::pkcs1::Error,
+    },
+    KubeClientProtocolError {
+        message: String,
+    },
+
+    GenericError {
+        message: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// Unexpected errors are not expected to occur in normal usage, and reflect
@@ -80,6 +139,7 @@ pub enum UnknownError {
 #[snafu(module, visibility(pub))]
 pub enum UnexpectedError {
     JsonError { source: serde_json::Error },
+    TokioError { source: std::io::Error },
 }
 
 pub type FactorResult<T> = std::result::Result<T, FactorError>;

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use async_trait::async_trait;
-use factor_error::prelude::*;
+use factor_error::{prelude::*, ConfigSource};
 use http::uri::Uri;
 use k8s_openapi::api::{
     authentication::v1::{TokenRequest, TokenRequestSpec},
@@ -144,8 +144,8 @@ impl IdentityProvider for Provider {
                 .service_account_name
                 .as_ref()
                 .with_context(|| MissingConfigSnafu {
-                    config: "Kubernetes Provider",
-                    key: "service_account_name",
+                    config: ConfigSource::provider("k8s"),
+                    at: ("service_account_name", "k8s"),
                 })?;
 
         let api: Api<ServiceAccount> = Api::default_namespaced(client.clone());

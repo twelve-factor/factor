@@ -43,15 +43,24 @@ impl Provider {
     /// - `config.client_id` is not set
     /// - `config.client_secret` is not set
     pub fn new(config: Config) -> FactorResult<Self> {
-        if config.issuer.is_none() {
-            whatever!("auth0 issuer must be configured");
-        }
-        if config.client_id.is_none() {
-            whatever!("auth0 client_id must be configured");
-        }
-        if config.client_secret.is_none() {
-            whatever!("auth0 client_secret must be configured");
-        }
+        ensure!(
+            config.issuer.is_some(),
+            GenericSnafu {
+                message: "auth0 issuer must be configured"
+            }
+        );
+        ensure!(
+            config.client_id.is_some(),
+            GenericSnafu {
+                message: "auth0 client_id must be configured"
+            }
+        );
+        ensure!(
+            config.client_secret.is_some(),
+            GenericSnafu {
+                message: "auth0 client_secret must be configured"
+            }
+        );
 
         Ok(Self {
             config,
@@ -191,9 +200,12 @@ impl IdentityProvider for Provider {
                 .all(|required_scope| grant_scopes.contains(&(*required_scope).to_string()))
         });
 
-        if !grant_exists {
-            whatever!("Client grant was not successfully created with all required scopes - check management API permissions");
-        }
+        ensure!(
+            grant_exists,
+            GenericSnafu {
+                message: "Client grant was not successfully created with all required scopes - check management API permissions"
+            }
+        );
 
         let mut config = self.config.clone();
         config.client_id = Some(app_response["client_id"].as_str().unwrap().to_string());

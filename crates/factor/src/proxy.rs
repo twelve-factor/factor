@@ -51,7 +51,7 @@ pub struct AuthProxy {
     incoming_identity: IncomingIdentity,
     key_cache: Mutex<HashMap<String, DecodingKey>>,
     client: reqwest::Client,
-    provider: Arc<dyn super::identity::IdentityProvider + Send + Sync>,
+    provider: Arc<dyn factor_core::identity::IdentityProvider + Send + Sync>,
 }
 
 impl AuthProxy {
@@ -253,7 +253,7 @@ pub fn get_proxy_service(
     incoming_identity: IncomingIdentity,
     reject_unknown: bool,
     ipv6: bool,
-    provider: Arc<dyn identity::IdentityProvider + Send + Sync>,
+    provider: Arc<dyn factor_core::identity::IdentityProvider + Send + Sync>,
 ) -> Service<HttpProxy<AuthProxy>> {
     let conf = Arc::new(ServerConf::default());
     let mut proxy = pingora_proxy::http_proxy_service(

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 use std::{
-    borrow::Cow,
     env,
     env::VarError,
     ffi::OsStr,
@@ -24,10 +23,10 @@ use std::{
 };
 
 use anyhow::Result;
+use factor_error::prelude::*;
 use notify::{Event, RecursiveMode, Watcher};
 use reqwest;
 use serde::de::DeserializeOwned;
-use shellexpand::LookupError;
 
 // Callbacks can be either string or typed
 pub type StringCallback = Arc<dyn Fn(String) + Send + Sync>;
@@ -198,8 +197,8 @@ pub fn set_var_file(
     key: impl AsRef<OsStr>,
     value: impl AsRef<OsStr>,
     path: &PathBuf,
-) -> Result<()> {
-    set_var_file_with_remap(key, value, path, None, None)
+) -> FactorResult<()> {
+    Ok(set_var_file_with_remap(key, value, path, None, None)?)
 }
 
 /// # Errors
@@ -225,21 +224,30 @@ pub fn set_var_file_with_remap(
     path: &PathBuf,
     from: Option<&str>,
     to: Option<&str>,
-) -> Result<()> {
+) -> FactorResult<()> {
     let canonicalized_parent = path
         .parent()
-        .ok_or(VarError::NotPresent)?
-        .canonicalize()
-        .map_err(|e| {
-            anyhow::anyhow!("Failed to get canonical parent path from {:?}: {}", path, e)
-        })?;
+        .context(PathSnafu {
+            reason: format!("Failed to get parent path from {}", path.display()),
+        })?
+        .canonicalize();
+
+    let canonicalized_parent = canonicalized_parent.context(IoSnafu {
+        reason: format!("Failed to get canonical path from {}", path.display()),
+    })?;
+
     let file_name = path
         .file_name()
-        .ok_or(VarError::NotPresent)?
+        .ok_or(VarError::NotPresent)
+        .context(StdEnvVarSnafu)?
         .to_str()
-        .ok_or(VarError::NotPresent)?;
+        .ok_or(VarError::NotPresent)
+        .context(StdEnvVarSnafu)?;
     let canonical_path = canonicalized_parent.join(file_name); // Create PathBuf here
-    let path_str = canonical_path.to_str().ok_or(VarError::NotPresent)?; // path_str is now derived from rename_path
+    let path_str = canonical_path
+        .to_str()
+        .ok_or(VarError::NotPresent)
+        .context(StdEnvVarSnafu)?; // path_str is now derived from rename_path
 
     let remapped_path = match (from, to) {
         (Some(from_str), Some(to_str)) => path_str.replace(from_str, to_str),
@@ -247,16 +255,24 @@ pub fn set_var_file_with_remap(
     };
     let ref_key = format!(
         "__REF__{}",
-        key.as_ref().to_str().ok_or(VarError::NotPresent)?
+        key.as_ref()
+            .to_str()
+            .ok_or(VarError::NotPresent)
+            .context(StdEnvVarSnafu)?
     );
     set_var(ref_key, format!("file://{}", &remapped_path));
-    let temp_file = tempfile::NamedTempFile::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create temporary file: {}", e))?;
+    let temp_file = tempfile::NamedTempFile::new().with_context(|_| IoSnafu {
+        reason: "Failed to create temporary file".to_string(),
+    })?;
     let temp_path = temp_file.into_temp_path();
-    fs::write(&temp_path, value.as_ref().to_string_lossy().as_bytes())
-        .map_err(|e| anyhow::anyhow!("Failed to write to temporary file: {}", e))?;
-    fs::rename(&temp_path, &canonical_path)
-        .map_err(|e| anyhow::anyhow!("Failed to rename temporary file: {}", e))?;
+    fs::write(&temp_path, value.as_ref().to_string_lossy().as_bytes()).with_context(|| {
+        IoSnafu {
+            reason: "Failed to write to temporary file".to_string(),
+        }
+    })?;
+    fs::rename(&temp_path, &canonical_path).with_context(|| GenericSnafu {
+        message: "Failed to rename temporary file".to_string(),
+    })?;
     Ok(())
 }
 
@@ -319,7 +335,7 @@ mod tests {
 
         let expected = format!("Prefix-{value}-Suffix");
 
-        let result = expand(&input).unwrap();
+        let result = factor_core::env::expand(&input).unwrap();
 
         assert_eq!(result, expected);
 

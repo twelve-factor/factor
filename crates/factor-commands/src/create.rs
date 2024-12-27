@@ -25,7 +25,7 @@ pub struct Create {
 /// This function is infallible, but `parse_target` returns a Result for
 /// compatibility with the `clap::value_parser!` macro
 #[allow(clippy::unnecessary_wraps)]
-fn parse_target<T, U>(s: &str) -> Result<(T, U), String>
+pub fn parse_target<T, U>(s: &str) -> Result<(T, U), String>
 where
     T: From<String> + AsRef<str>,
     U: From<String> + AsRef<str>,

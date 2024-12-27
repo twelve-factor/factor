@@ -20,6 +20,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use factor_core::identity::IdentityProvider;
+use factor_error::FactorResult;
 use log::{error, info, trace, warn};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -47,7 +48,7 @@ impl IdentitySyncService {
         target_id: &str,
         audience: &str,
         provider: Arc<dyn IdentityProvider + Send + Sync>,
-    ) -> anyhow::Result<Self> {
+    ) -> FactorResult<Self> {
         let safe_regex = Regex::new(r"[^a-zA-Z0-9_-]")?;
         let target_id_safe = safe_regex
             .replace_all(target_id, "_")

@@ -19,9 +19,11 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use factor::{child, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
-use factor_commands::Create;
+use factor::{child, env, identity, ngrok, proxy, proxy::IncomingIdentity};
+use factor_commands::{parse_target, Create};
+use factor_error::{prelude::*, ConfigSource, FactorResult};
 use log::{debug, error, info, trace, warn};
+use nonempty::NonEmpty;
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -53,7 +55,7 @@ struct ProviderConfig {
     #[serde(default)]
     name: String,
     #[serde(flatten)]
-    settings: identity::ProviderConfig,
+    settings: factor_core::identity::ProviderConfig,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -83,22 +85,21 @@ struct AppIdConfig {
     targets: HashMap<String, String>,
 }
 
-fn load_global_config() -> Result<GlobalConfig, anyhow::Error> {
-    let home_dir =
-        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+fn load_global_config() -> FactorResult<GlobalConfig> {
+    let home_dir = dirs::home_dir().context(MissingHomeDirSnafu)?;
     let config_path = home_dir.join(".factor");
 
     match std::fs::read_to_string(config_path) {
-        Ok(contents) => Ok(toml::from_str(&contents)?),
+        Ok(contents) => Ok(toml::from_str(&contents).context(TomlSnafu)?),
         Err(_) => Ok(GlobalConfig::default()),
     }
 }
 
-fn load_app_config(path: &str) -> Result<AppConfig, anyhow::Error> {
+fn load_app_config(path: &str) -> FactorResult<AppConfig> {
     match std::fs::read_to_string(path) {
         Ok(contents) => {
-            let expanded_contents = env::expand(&contents)?;
-            Ok(toml::from_str(&expanded_contents)?)
+            let expanded_contents = factor_core::env::expand(&contents)?;
+            Ok(toml::from_str(&expanded_contents).context(TomlSnafu)?)
         }
         Err(_) => Ok(AppConfig::default()),
     }
@@ -132,8 +133,8 @@ enum Commands {
     /// Sync identities for app
     Id {
         /// Target ID and audience for the identity token
-        #[arg(long = "target", action = clap::ArgAction::Append, value_parser = parse_target::<String, String>)]
-        targets: Vec<(String, String)>,
+        #[arg(long = "target", action = clap::ArgAction::Append, value_parser = parse_target::<String, String>, num_args = 1..)]
+        targets: NonEmpty<(String, String)>,
     },
     /// Proxy from `PORT` to `CHILD_PORT`
     Proxy {
@@ -181,7 +182,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> FactorResult<()> {
     dotenv().ok();
     // Initialize the logger from the environment
     env_logger::init();
@@ -274,24 +275,29 @@ fn handle_create(
     id_targets: &[(String, String)],
     global_config: &GlobalConfig,
     config_path: &String,
-) -> Result<(), anyhow::Error> {
+) -> FactorResult<()> {
     info!("Creating application configuration");
 
     // Ensure we have global id config
-    let global_id_config = global_config.id.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("No identity configuration found in global config (~/.factor)")
+    let global_id_config = global_config.id.as_ref().context(MissingConfigSnafu {
+        config: ConfigSource::Global,
+        at: "id",
     })?;
+
     // Get the provider - either from flag or default from global config
     let provider_name = match id_provider.as_ref() {
         Some(provider_str) => {
-            // If provider is explicitly set, fail if not found
-            if !global_id_config
-                .providers
-                .iter()
-                .any(|p| p.name == provider_str.as_str())
-            {
-                anyhow::bail!("{} provider not found in global config", provider_str);
-            }
+            ensure!(
+                global_id_config
+                    .providers
+                    .iter()
+                    .any(|p| p.name == provider_str),
+                MissingConfigSnafu {
+                    config: ConfigSource::Global,
+                    at: "providers",
+                }
+            );
+
             provider_str.as_str()
         }
         None => {
@@ -299,7 +305,10 @@ fn handle_create(
             global_id_config
                 .default_provider
                 .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("No default provider specified in global config"))?
+                .context(MissingConfigSnafu {
+                    config: ConfigSource::Global,
+                    at: "default_provider",
+                })?
         }
     };
 
@@ -308,15 +317,16 @@ fn handle_create(
         .providers
         .iter()
         .find(|p| p.name == provider_name)
-        .ok_or_else(|| {
-            anyhow::anyhow!("{} provider not configured in global config", provider_name)
+        .context(MissingConfigSnafu {
+            config: ConfigSource::Global,
+            at: ("provider_name", provider_name),
         })?;
 
     let mut id_config = provider_config.clone();
 
-    let provider = identity::create_provider(&id_config.settings)?;
+    let provider = factor_core::identity::create_provider(&id_config.settings)?;
 
-    let rt = Runtime::new()?;
+    let rt = Runtime::new().context(TokioSnafu)?;
     id_config.settings = rt.block_on(provider.configure_app_identity(app))?;
 
     let app_config = AppConfig {
@@ -340,7 +350,7 @@ fn handle_create(
     Ok(())
 }
 
-fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<(), anyhow::Error> {
+fn handle_id(targets: &NonEmpty<(String, String)>, app_config: &AppConfig) -> FactorResult<()> {
     trace!("Running id command");
 
     let mut targets_map = app_config
@@ -352,17 +362,29 @@ fn handle_id(targets: &Vec<(String, String)>, app_config: &AppConfig) -> Result<
     for (key, value) in targets {
         targets_map.insert(key.clone(), value.clone());
     }
-    if targets_map.is_empty() {
-        anyhow::bail!("At least one target must be specified");
-    }
+
+    ensure!(
+        !targets_map.is_empty(),
+        MissingConfigSnafu {
+            config: ConfigSource::App,
+            at: "targets",
+        }
+    );
+
+    // if targets_map.is_empty() {
+    //     anyhow::bail!("At least one target must be specified");
+    // }
 
     let provider_config = app_config
         .id
-        .as_ref()
-        .map(|id| &id.provider.settings)
-        .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
+        .context(MissingConfigSnafu {
+            config: ConfigSource::App,
+            at: "id",
+        })?
+        .provider
+        .settings;
 
-    let provider = identity::create_provider(provider_config)?;
+    let provider = factor_core::identity::create_provider(&provider_config)?;
     let mut server = factor::server::Server::new();
     for (target_id, audience) in targets_map {
         debug!("adding identity for {target_id}");

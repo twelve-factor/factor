@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, prelude::*};
 use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
-use factor_error::{prelude::*, FactorResult};
+use factor_error::{prelude::*, ConfigSource, FactorResult};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use rand::{rngs::StdRng, SeedableRng};
 use rsa::{
@@ -164,8 +164,8 @@ impl IdentityProvider for Provider {
 
     async fn get_token(&self, audience: &str) -> FactorResult<String> {
         let sub = self.config.sub.as_ref().context(MissingConfigSnafu {
-            key: "sub",
-            config: "Provider",
+            config: ConfigSource::provider("local"),
+            at: "sub",
         })?;
 
         // if iss is still an env var, expand it now
