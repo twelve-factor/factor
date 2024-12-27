@@ -302,28 +302,6 @@ where
     set_var_file_with_remap(key, json_string.as_str(), path, from, to)
 }
 
-/// # Errors
-///
-/// Returns `anyhow::Error` if:
-///
-/// - The environment variable (`__REF__{key}`) doesn't exist
-/// - The input string has invalid syntax (e.g., unclosed `${` braces)
-pub fn expand(input: &str) -> Result<String> {
-    Ok(shellexpand::env_with_context(
-        input,
-        |key| -> Result<Option<String>, LookupError<std::env::VarError>> {
-            var(key)
-                .map(Some)
-                .map_err(|e| LookupError {
-                    var_name: key.to_string(),
-                    cause: e,
-                })
-                .or(Ok::<Option<String>, LookupError<std::env::VarError>>(None))
-        },
-    )
-    .map(Cow::into_owned)?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

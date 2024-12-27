@@ -15,10 +15,10 @@
  */
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, prelude::*};
 use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
+use factor_error::{prelude::*, FactorResult};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use rand::{rngs::StdRng, SeedableRng};
 use rsa::{
@@ -59,8 +59,8 @@ pub struct Provider {
 /// - Generated key doesn't meet cryptographic requirements
 ///
 /// TODO: Unwrap these error cases
-fn generate_rsa_key_from_secret(secret: &str) -> Result<RsaPrivateKey> {
-    let decoded_secret = BASE64_STANDARD.decode(secret)?;
+fn generate_rsa_key_from_secret(secret: &str) -> FactorResult<RsaPrivateKey> {
+    let decoded_secret = BASE64_STANDARD.decode(secret).context(Base64Snafu)?;
 
     let mut hasher = Sha256::new();
     hasher.update(decoded_secret);
@@ -68,9 +68,7 @@ fn generate_rsa_key_from_secret(secret: &str) -> Result<RsaPrivateKey> {
 
     let mut rng = StdRng::from_seed(seed.into());
 
-    let private_key = RsaPrivateKey::new(&mut rng, 2048)?;
-
-    Ok(private_key)
+    Ok(RsaPrivateKey::new(&mut rng, 2048).context(RsaSnafu)?)
 }
 
 /// Generate a JWKS from a public key
@@ -120,10 +118,13 @@ impl Provider {
     /// - The generated key cannot be encoded in PKCS#1 PEM format (extremely unlikely,
     ///   would indicate internal key corruption)
     /// - The PEM-encoded key cannot be converted to JWT format
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> FactorResult<Self> {
         let private_key = generate_rsa_key_from_secret(&config.secret)?;
-        let private_key_pem = private_key.to_pkcs1_pem(LineEnding::CR)?.to_string();
-        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())?;
+        let private_key_pem = private_key
+            .to_pkcs1_pem(LineEnding::CR)
+            .context(CryptoSnafu)?
+            .to_string();
+        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).context(JwtSnafu)?;
         let public_key = private_key.to_public_key();
         let kid = generate_kid(&public_key);
         let jwks = generate_jwks(&public_key, &kid);
@@ -147,43 +148,42 @@ struct Claims {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
+    async fn get_iss_and_jwks(&self) -> FactorResult<Option<(String, String)>> {
         // if iss is still an env var, expand it now
-        let iss = env::expand(&self.config.iss)?;
-        let json = serde_json::to_string_pretty(&self.jwks)?;
+        let iss = crate::env::expand(&self.config.iss)?;
+        let json = serde_json::to_string_pretty(&self.jwks).context(JsonSnafu)?;
         Ok(Some((iss, json)))
     }
 
-    async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
+    async fn configure_app_identity(&self, name: &str) -> FactorResult<ProviderConfig> {
         let mut config = self.config.clone();
         // subject is just the name of the app for local
         config.sub = Some(name.to_string());
         Ok(ProviderConfig::local(config))
     }
 
-    async fn ensure_audience(&self, _audience: &str) -> Result<()> {
-        // No audience management needed for local JWT generation
-        Ok(())
-    }
-
-    async fn get_token(&self, audience: &str) -> Result<String> {
-        let sub = self.config.sub.as_ref().context("Sub not configured")?;
+    async fn get_token(&self, audience: &str) -> FactorResult<String> {
+        let sub = self.config.sub.as_ref().context(MissingConfigSnafu {
+            key: "sub",
+            config: "Provider",
+        })?;
 
         // if iss is still an env var, expand it now
         let iss = env::expand(&self.config.iss)?;
 
-        let claims = Claims {
+        let claims: Claims = Claims {
             iss,
             sub: sub.to_string(),
             aud: audience.to_string(),
             exp: (SystemTime::now() + std::time::Duration::from_secs(1800)) // Expiration time (30 minutes from now)
-                .duration_since(UNIX_EPOCH)?
+                .duration_since(UNIX_EPOCH)
+                .expect("SystemTime before UNIX EPOCH is impossible")
                 .as_secs(),
         };
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());
 
-        let token = encode(&header, &claims, &self.key)?;
+        let token = encode(&header, &claims, &self.key).context(JwtSnafu)?;
 
         Ok(token)
     }

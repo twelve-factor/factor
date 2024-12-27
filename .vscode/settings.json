@@ -1,5 +1,9 @@
 {
   "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": [
+    "--profile",
+    "fast-dev"
+  ],
   "rust-analyzer.rustfmt.extraArgs": [
     "+nightly"
   ],
@@ -16,5 +20,6 @@
     "editor.codeActionsOnSave": {
       "source.fixAll": "always"
     }
-  }
+  },
+  "rust-analyzer.imports.preferPrelude": true
 }

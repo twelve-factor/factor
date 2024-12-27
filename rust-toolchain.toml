@@ -1,11 +1,11 @@
 [toolchain]
-channel = "stable"
+channel = "nightly"
 components = ["clippy", "rustfmt"]
 
 # Document potential targets that we may want to build for
 targets = [
-  "aarch64-apple-darwin",
-  "wasm32-wasip2",
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "wasm32-wasip2",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
 ]

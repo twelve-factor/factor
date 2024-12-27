@@ -13,72 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-mod providers;
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use factor_core::identity::IdentityProvider;
 use log::{error, info, trace, warn};
-pub use providers::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time::interval};
 
 use super::{env, server::Service};
-
-macro_rules! identity_providers {
-    ($($variant:ident),*) => {
-        #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, strum_macros::Display)]
-        #[strum(serialize_all = "lowercase")]
-        #[serde(rename_all = "lowercase")]
-        #[allow(non_camel_case_types)]
-        pub enum IdProvider {
-            $($variant),*
-        }
-
-        impl IdProvider {
-            #[must_use] pub fn variants() -> &'static [&'static str] {
-                &[$(stringify!($variant)),*]
-            }
-        }
-
-        #[derive(Debug, Clone, Deserialize, Serialize)]
-        #[serde(tag = "provider", rename_all = "lowercase")]
-        #[allow(non_camel_case_types)]
-        pub enum ProviderConfig {
-            $(
-                #[serde(rename_all = "lowercase")]
-                $variant(providers::$variant::Config),
-            )*
-        }
-
-        /// # Errors
-        ///
-        /// This method returns the same errors as [`providers::$variant::Provider::new`]
-        pub fn create_provider(config: &ProviderConfig) -> Result<Arc<dyn IdentityProvider>> {
-            match config {
-                $(
-                    ProviderConfig::$variant(config) => {
-                        let provider = providers::$variant::Provider::new(config.clone())?;
-                        Ok(Arc::new(provider))
-                    },
-                )*
-            }
-        }
-    }
-}
-
-identity_providers!(dummy, auth0, k8s, local);
-
-#[async_trait]
-pub trait IdentityProvider: Send + Sync {
-    async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig>;
-    async fn ensure_audience(&self, audience: &str) -> Result<()>;
-    async fn get_token(&self, audience: &str) -> Result<String>;
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>>;
-}
 
 pub struct IdentitySyncService {
     pub key: String,

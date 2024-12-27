@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use anyhow::{Context, Result};
 use async_trait::async_trait;
+use factor_error::prelude::*;
 use http::uri::Uri;
 use k8s_openapi::api::{
     authentication::v1::{TokenRequest, TokenRequestSpec},
@@ -53,7 +53,7 @@ impl Provider {
     ///
     /// The k8s provider is infallible, but `Provider::new` returns a Result for
     /// compatibility with the `identity_providers!` macro
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> FactorResult<Self> {
         Ok(Self {
             config,
             client: OnceCell::new(),
@@ -78,26 +78,23 @@ impl Provider {
     ///     - Invalid proxy configuration
     ///
     /// - See [`kube::Client::try_default`]
-    pub async fn get_client(&self) -> Result<&Client> {
+    pub async fn get_client(&self) -> FactorResult<&Client> {
         self.client
             .get_or_try_init(|| async {
                 Ok(if let Some(path) = &self.config.kubeconfig_path {
                     // Load kubeconfig and convert to client config
-                    let kube_config = kube::config::Kubeconfig::read_from(path)
-                        .context("Failed to read kubeconfig from path")?;
+                    let kube_config =
+                        kube::config::Kubeconfig::read_from(path).context(KubeConfigSnafu)?;
                     let client_config = kube::config::Config::from_custom_kubeconfig(
                         kube_config,
                         &KubeConfigOptions::default(),
                     )
                     .await
-                    .context("Failed to create config from kubeconfig")?;
-                    Client::try_from(client_config)
-                        .context("Failed to create client from config")?
+                    .context(KubeConfigSnafu)?;
+                    Client::try_from(client_config).context(KubeClientSnafu)?
                 } else {
                     // Use the default client loading
-                    Client::try_default()
-                        .await
-                        .context("Failed to create default Kubernetes client")?
+                    Client::try_default().await.context(KubeClientSnafu)?
                 })
             })
             .await
@@ -106,12 +103,12 @@ impl Provider {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
+    async fn get_iss_and_jwks(&self) -> FactorResult<Option<(String, String)>> {
         // No jwks management
         Ok(None)
     }
 
-    async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
+    async fn configure_app_identity(&self, name: &str) -> FactorResult<ProviderConfig> {
         let client = self.get_client().await?;
         let sa_name = format!("{name}-sa");
 
@@ -129,7 +126,7 @@ impl IdentityProvider for Provider {
         // Create the service account
         api.create(&PostParams::default(), &sa)
             .await
-            .context("Failed to create service account")?;
+            .context(KubeClientSnafu)?;
 
         trace!("Created service account: {}", sa_name);
 
@@ -140,18 +137,16 @@ impl IdentityProvider for Provider {
         Ok(ProviderConfig::k8s(config))
     }
 
-    async fn ensure_audience(&self, _audience: &str) -> Result<()> {
-        // audience in k8s can be specified on token creation
-        Ok(())
-    }
-
-    async fn get_token(&self, audience: &str) -> Result<String> {
+    async fn get_token(&self, audience: &str) -> FactorResult<String> {
         let client = self.get_client().await?;
-        let sa_name = self
-            .config
-            .service_account_name
-            .as_ref()
-            .context("Service account name not configured")?;
+        let sa_name =
+            self.config
+                .service_account_name
+                .as_ref()
+                .with_context(|| MissingConfigSnafu {
+                    config: "Kubernetes Provider",
+                    key: "service_account_name",
+                })?;
 
         let api: Api<ServiceAccount> = Api::default_namespaced(client.clone());
 
@@ -169,12 +164,15 @@ impl IdentityProvider for Provider {
         let token_response = api
             .create_token_request(sa_name, &PostParams::default(), &token_request)
             .await
-            .context("Failed to create token request")?;
+            .context(KubeClientSnafu)?;
 
-        token_response
+        let token = token_response
             .status
-            .ok_or_else(|| anyhow::Error::msg("Token response status was empty"))
-            .map(|status| status.token)
-            .context("Failed to extract token from response")
+            .with_context(|| KubeClientProtocolSnafu {
+                message: "Token response status was empty",
+            })?
+            .token;
+
+        Ok(token)
     }
 }

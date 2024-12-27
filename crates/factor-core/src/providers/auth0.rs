@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use anyhow::Result;
 use async_trait::async_trait;
+use factor_error::prelude::*;
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -42,15 +42,15 @@ impl Provider {
     /// - `config.issuer` is not set
     /// - `config.client_id` is not set
     /// - `config.client_secret` is not set
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> FactorResult<Self> {
         if config.issuer.is_none() {
-            anyhow::bail!("auth0 issuer must be configured");
+            whatever!("auth0 issuer must be configured");
         }
         if config.client_id.is_none() {
-            anyhow::bail!("auth0 client_id must be configured");
+            whatever!("auth0 client_id must be configured");
         }
         if config.client_secret.is_none() {
-            anyhow::bail!("auth0 client_secret must be configured");
+            whatever!("auth0 client_secret must be configured");
         }
 
         Ok(Self {
@@ -59,7 +59,7 @@ impl Provider {
         })
     }
 
-    async fn get_management_token(&self) -> Result<String> {
+    async fn get_management_token(&self) -> FactorResult<String> {
         let issuer = self.config.issuer.as_ref().unwrap();
         let management_token_url = format!("{issuer}/oauth/token");
 
@@ -75,10 +75,13 @@ impl Provider {
             .post(&management_token_url)
             .json(&data)
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         Ok(management_resp.access_token)
     }
@@ -100,12 +103,7 @@ struct Auth0Response {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
-        // No jwks management
-        Ok(None)
-    }
-
-    async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
+    async fn configure_app_identity(&self, name: &str) -> FactorResult<ProviderConfig> {
         let issuer = self.config.issuer.as_ref().unwrap();
         let management_token = self.get_management_token().await?;
 
@@ -122,10 +120,13 @@ impl IdentityProvider for Provider {
             .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&app_data)
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         let client_id = app_response["client_id"].as_str().unwrap();
         let scopes = vec![
@@ -151,8 +152,10 @@ impl IdentityProvider for Provider {
             .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .json(&management_grant_data)
             .send()
-            .await?
-            .error_for_status()?;
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?;
 
         // After creating the client grant, verify it exists with all scopes
         let grants: Vec<Value> = self
@@ -160,10 +163,13 @@ impl IdentityProvider for Provider {
             .get(&client_grants_url)
             .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         // Check if our grant exists with all the required scopes
         let grant_exists = grants.iter().any(|grant| {
@@ -186,7 +192,7 @@ impl IdentityProvider for Provider {
         });
 
         if !grant_exists {
-            anyhow::bail!("Client grant was not successfully created with all required scopes - check management API permissions");
+            whatever!("Client grant was not successfully created with all required scopes - check management API permissions");
         }
 
         let mut config = self.config.clone();
@@ -196,7 +202,7 @@ impl IdentityProvider for Provider {
         Ok(ProviderConfig::auth0(config))
     }
 
-    async fn ensure_audience(&self, audience: &str) -> Result<()> {
+    async fn ensure_audience(&self, audience: &str) -> FactorResult<()> {
         let issuer = self.config.issuer.as_ref().unwrap();
 
         let management_token = self.get_management_token().await?;
@@ -207,10 +213,13 @@ impl IdentityProvider for Provider {
             .get(&resource_servers_url)
             .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         if !resource_servers
             .iter()
@@ -230,8 +239,10 @@ impl IdentityProvider for Provider {
                 .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&api_data)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await
+                .context(ReqwestSnafu)?
+                .error_for_status()
+                .context(ReqwestSnafu)?;
         }
 
         let client_grants_url = format!("{issuer}/api/v2/client-grants");
@@ -240,10 +251,13 @@ impl IdentityProvider for Provider {
             .get(&client_grants_url)
             .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         if !client_grants.iter().any(|grant| {
             grant["client_id"] == json!(self.config.client_id.as_ref().unwrap())
@@ -260,14 +274,16 @@ impl IdentityProvider for Provider {
                 .header(header::AUTHORIZATION, format!("Bearer {management_token}"))
                 .json(&client_grant_data)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await
+                .context(ReqwestSnafu)?
+                .error_for_status()
+                .context(ReqwestSnafu)?;
         }
 
         Ok(())
     }
 
-    async fn get_token(&self, audience: &str) -> Result<String> {
+    async fn get_token(&self, audience: &str) -> FactorResult<String> {
         let issuer = self.config.issuer.as_ref().unwrap();
         let token_url = format!("{issuer}/oauth/token");
 
@@ -283,10 +299,13 @@ impl IdentityProvider for Provider {
             .post(&token_url)
             .json(&data)
             .send()
-            .await?
-            .error_for_status()?
+            .await
+            .context(ReqwestSnafu)?
+            .error_for_status()
+            .context(ReqwestSnafu)?
             .json()
-            .await?;
+            .await
+            .context(ReqwestSnafu)?;
 
         Ok(auth_resp.access_token)
     }

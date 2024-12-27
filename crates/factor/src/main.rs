@@ -20,6 +20,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use factor::{child, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
+use factor_commands::Create;
 use log::{debug, error, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -124,47 +125,10 @@ struct Cli {
     command: Commands,
 }
 
-/// # Errors
-///
-/// This function is infallible, but `parse_target` returns a Result for
-/// compatibility with the `clap::value_parser!` macro
-#[allow(clippy::unnecessary_wraps)]
-fn parse_target<T, U>(s: &str) -> Result<(T, U), String>
-where
-    T: From<String> + AsRef<str>,
-    U: From<String> + AsRef<str>,
-{
-    let pos = s.find('=');
-    match pos {
-        None => Ok((T::from(s.to_string()), U::from(s.to_string()))),
-        Some(pos) => {
-            let key = s[..pos].to_string();
-            let value = s[pos + 1..].to_string();
-            Ok((T::from(key), U::from(value)))
-        }
-    }
-}
-
 #[derive(Subcommand)]
 enum Commands {
     /// Create a new application configuration
-    Create {
-        /// Application name
-        #[arg(long, required = true)]
-        app: String,
-
-        /// Path for dynamic env var storage
-        #[arg(long, default_value = ".")]
-        path: String,
-
-        /// Identity provider to use
-        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(IdProvider::variants()))]
-        id_provider: Option<String>,
-
-        /// Target ID and audience for the identity token
-        #[arg(long = "id-target", action = clap::ArgAction::Append, value_parser = parse_target::<String, String>)]
-        id_targets: Vec<(String, String)>,
-    },
+    Create(Create),
     /// Sync identities for app
     Id {
         /// Target ID and audience for the identity token
@@ -249,12 +213,12 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     match &cli.command {
-        Commands::Create {
+        Commands::Create(Create {
             app,
             id_provider,
             path,
             id_targets,
-        } => {
+        }) => {
             handle_create(
                 app,
                 id_provider.as_ref(),

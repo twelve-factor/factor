@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [workspace]
 resolver = "2"
 members = ["crates/*"]
@@ -6,17 +8,38 @@ members = ["crates/*"]
 license = "Apache-2.0"
 edition = "2021"
 repository = "https://github.com/twelve-factor/factor"
+keywords = ["container", "kubernetes", "platform", "twelve-factor"]
+categories = ["command-line-utilities", "configuration", "development-tools"]
 
 [workspace.dependencies]
+factor-core = { path = "crates/factor-core" }
+factor-error = { path = "crates/factor-error" }
+factor-commands = { path = "crates/factor-commands" }
 rustc-hash = "2.1.0"
 educe = "0.6.0"
 derive_more = { version = "1.0.0", features = ["full"] }
 derive-new = "0.7.0"
 snafu = "0.8.5"
+strum = { version = "0.26.3", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
+async-trait = "0.1.83"
+serde_json = "1.0"
+reqwest = { version = "0.12.10", features = ["blocking", "json"] }
+http = "1.2.0"
+k8s-openapi = { version = "0.24.0", features = ["latest"] }
+kube = "0.98.0"
+log = "0.4.22"
+tokio = { version = "1.41", features = ["full"] }
+shellexpand = "3.1.0"
+error-stack = "0.5.0"
+jsonwebtoken = "9.3"
+
+# this version has a timing vulnerability that will be fixed via https://github.com/RustCrypto/RSA/pull/394
+rsa = "0.9.7"
 
 [workspace.lints.clippy]
 cargo = { level = "deny", priority = -1 }
-multiple_crate_versions = "allow"
+multiple_crate_versions = "warn"
 
 suspicious = { level = "deny", priority = -1 }
 correctness = { level = "deny", priority = -1 }
@@ -24,3 +47,8 @@ pedantic = { level = "warn", priority = -1 }
 style = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 disallowed-macros = "deny"
+
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3

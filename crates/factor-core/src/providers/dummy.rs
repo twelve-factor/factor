@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
+use factor_error::prelude::*;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 
@@ -45,28 +45,24 @@ impl Provider {
     ///
     /// The dummy provider is infallible, but `Provider::new` returns a Result for
     /// compatibility with the `identity_providers!` macro
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> FactorResult<Self> {
         Ok(Self { config })
     }
 }
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
+    async fn get_iss_and_jwks(&self) -> FactorResult<Option<(String, String)>> {
         // No jwks management
         Ok(None)
     }
-    async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
+    async fn configure_app_identity(&self, name: &str) -> FactorResult<ProviderConfig> {
         let mut config = self.config.clone();
         config.app_name = Some(name.to_string());
         Ok(ProviderConfig::dummy(config))
     }
 
-    async fn ensure_audience(&self, _audience: &str) -> Result<()> {
-        Ok(())
-    }
-
-    async fn get_token(&self, audience: &str) -> Result<String> {
+    async fn get_token(&self, audience: &str) -> FactorResult<String> {
         let now = Utc::now();
         let claims = Claims {
             iss: "dummy-issuer".to_string(),
@@ -84,7 +80,8 @@ impl IdentityProvider for Provider {
             &Header::new(Algorithm::HS256),
             &claims,
             &EncodingKey::from_secret(b"dummy-secret"),
-        )?;
+        )
+        .context(JwtSnafu)?;
 
         Ok(token)
     }

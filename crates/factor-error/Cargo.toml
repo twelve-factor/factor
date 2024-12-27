@@ -9,9 +9,21 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
-notify = "7.0.0"
+derive_more.workspace = true
+error-stack.workspace = true
+jsonwebtoken.workspace = true
+rsa.workspace = true
+serde_json.workspace = true
+shellexpand.workspace = true
 snafu.workspace = true
+
+ariadne = { version = "0.5.0", features = ["auto-color", "concolor"] }
+notify = "7.0.0"
 vfs = "0.12.0"
+base64 = "0.22.1"
+kube.workspace = true
+reqwest-error = "0.0.1"
+reqwest.workspace = true
 
 [lints]
 workspace = true
