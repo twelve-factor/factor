@@ -1,5 +1,7 @@
-use derive_more::derive::{Display, From};
+pub mod sources;
+
 use snafu::{Location, Snafu};
+use sources::{ConfigError, ParseSource};
 
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
@@ -17,31 +19,14 @@ where
     Unexpected { source: UnexpectedError },
 }
 
-#[derive(Debug, Display)]
-pub enum ConfigSource {
-    #[display("app config (.factor-app)")]
-    App,
-    #[display("{name} provider config")]
-    Provider { name: String },
-    #[display("global config (~/.factor)")]
-    GlobalConfig,
-}
-
-impl ConfigSource {
-    pub const GLOBAL: ConfigSource = ConfigSource::GlobalConfig;
-
-    pub fn provider(name: impl AsRef<str>) -> Self {
-        ConfigSource::Provider {
-            name: name.as_ref().to_string(),
-        }
-    }
-}
-
 /// Expected errors are caused by a problem with the user's configuration or
 /// system, and are definitely **not** bugs in our code.
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
-pub enum ExpectedError {
+pub enum ExpectedError
+where
+    Self: Send,
+{
     StdEnvVarError {
         source: std::env::VarError,
     },
@@ -52,9 +37,8 @@ pub enum ExpectedError {
 
     EnvVarError {},
 
-    MissingConfigError {
-        config: ConfigSource,
-        at: ConfigLocation,
+    ConfigError {
+        reason: ConfigError,
         #[snafu(implicit)]
         location: Location,
     },
@@ -69,12 +53,19 @@ pub enum ExpectedError {
         source: std::io::Error,
     },
 
-    GenericError {
-        reason: String,
+    TomlParseError {
+        input: ParseSource,
+        source: toml::de::Error,
     },
 
-    TomlError {
-        source: toml::de::Error,
+    JsonParseError {
+        input: Option<ParseSource>,
+        source: serde_json::Error,
+    },
+
+    JsonSerializeError {
+        what: String,
+        source: serde_json::Error,
     },
 
     KubeConfigError {
@@ -97,15 +88,6 @@ pub enum ExpectedError {
     },
 }
 
-#[derive(Debug, From)]
-pub enum ConfigLocation {
-    #[from(String, &str)]
-    Key(String),
-
-    #[from((String, String), (&str, &str))]
-    Expected { key: String, expected: String },
-}
-
 /// Unknown errors need to be reported to users, since we're not sure whether
 /// they reflect user errors or not, but we don't know enough about them to
 /// give them a user-friendly error message.
@@ -113,7 +95,10 @@ pub enum ConfigLocation {
 /// As a result, they should be reported using the "Unknown error" treatment.
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
-pub enum UnknownError {
+pub enum UnknownError
+where
+    Self: Send,
+{
     RsaError {
         source: rsa::errors::Error,
     },
@@ -137,8 +122,10 @@ pub enum UnknownError {
 /// so we can help users report the message as a bug.
 #[derive(Debug, Snafu)]
 #[snafu(module, visibility(pub))]
-pub enum UnexpectedError {
-    JsonError { source: serde_json::Error },
+pub enum UnexpectedError
+where
+    Self: Send,
+{
     TokioError { source: std::io::Error },
 }
 

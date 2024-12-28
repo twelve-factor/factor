@@ -12,9 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 use async_trait::async_trait;
-use factor_error::{prelude::*, ConfigSource};
+use factor_error::prelude::*;
 use http::uri::Uri;
 use k8s_openapi::api::{
     authentication::v1::{TokenRequest, TokenRequestSpec},
@@ -30,21 +30,24 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::sync::OnceCell;
 
-use crate::identity::{IdentityProvider, ProviderConfig};
+use crate::{
+    identity::{IdentityProvider, ProviderConfig},
+    Config,
+};
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Config {
+pub struct K8sConfig {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub cluster_url: Option<Uri>,
     pub namespace: Option<String>,
-    pub service_account_name: Option<String>,
+    pub service_account_name: String,
     pub kubeconfig_path: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct Provider {
-    config: Config,
+    config: Config<K8sConfig>,
     client: OnceCell<Client>,
 }
 
@@ -53,7 +56,7 @@ impl Provider {
     ///
     /// The k8s provider is infallible, but `Provider::new` returns a Result for
     /// compatibility with the `identity_providers!` macro
-    pub fn new(config: Config) -> FactorResult<Self> {
+    pub fn new(config: Config<K8sConfig>) -> FactorResult<Self> {
         Ok(Self {
             config,
             client: OnceCell::new(),
@@ -132,21 +135,14 @@ impl IdentityProvider for Provider {
 
         // Create new config with service account name
         let mut config = self.config.clone();
-        config.service_account_name = Some(sa_name);
+        config.service_account_name = sa_name;
 
-        Ok(ProviderConfig::k8s(config))
+        Ok(ProviderConfig::k8s(&config))
     }
 
     async fn get_token(&self, audience: &str) -> FactorResult<String> {
         let client = self.get_client().await?;
-        let sa_name =
-            self.config
-                .service_account_name
-                .as_ref()
-                .with_context(|| MissingConfigSnafu {
-                    config: ConfigSource::provider("k8s"),
-                    at: ("service_account_name", "k8s"),
-                })?;
+        let sa_name = &self.config.service_account_name;
 
         let api: Api<ServiceAccount> = Api::default_namespaced(client.clone());
 

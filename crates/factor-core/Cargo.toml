@@ -31,6 +31,9 @@ kube.workspace = true
 tokio.workspace = true
 serde_with = "3.12.0"
 shellexpand.workspace = true
+preinterpret = "0.2.0"
+derive_more.workspace = true
+derive-new.workspace = true
 
 [lints]
 workspace = true

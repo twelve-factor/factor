@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use factor_error::FactorResult;
+use factor_error::{sources::ConfigLocation, FactorResult};
 use serde::{Deserialize, Serialize};
 use strum::Display;
+
+pub trait ProviderDebug: IdentityProvider {
+    fn get_config_location(&self) -> ConfigLocation;
+}
 
 #[async_trait]
 pub trait IdentityProvider: Send + Sync {
@@ -35,27 +39,38 @@ macro_rules! identity_providers {
             }
         }
 
-        #[derive(Debug, Clone, Deserialize, Serialize)]
-        #[serde(tag = "provider", rename_all = "lowercase")]
-        #[allow(non_camel_case_types)]
-        pub enum ProviderConfig {
-            $(
-                #[serde(rename_all = "lowercase")]
-                $variant(crate::providers::$variant::Config),
-            )*
-        }
-
-        /// # Errors
-        ///
-        /// This method returns the same errors as [`providers::$variant::Provider::new`]
-        pub fn create_provider(config: &ProviderConfig) -> FactorResult<Arc<dyn IdentityProvider>> {
-            match config {
+        preinterpret::preinterpret! {
+            #[derive(Debug, Clone, Deserialize, Serialize)]
+            #[serde(tag = "provider", rename_all = "lowercase")]
+            #[allow(non_camel_case_types)]
+            pub enum ProviderConfig {
                 $(
-                    ProviderConfig::$variant(config) => {
-                        let provider = crate::providers::$variant::Provider::new(config.clone())?;
-                        Ok(Arc::new(provider))
-                    },
+                    #[serde(rename_all = "lowercase")]
+                    [!ident_camel! $variant](crate::providers::$variant::[!ident_camel! $variant Config]),
                 )*
+            }
+
+            impl ProviderConfig {
+                $(
+                    pub fn $variant(config: &(impl std::ops::Deref<Target = crate::providers::$variant::[!ident_camel! $variant Config]> + Clone)) -> ProviderConfig {
+                        ProviderConfig::[!ident_camel! $variant](config.deref().clone())
+                    }
+                )*
+            }
+
+            /// # Errors
+            ///
+            /// This method returns the same errors as [`providers::$variant::Provider::new`]
+            pub fn create_provider(config: &ProviderConfig, location: impl Into<ConfigLocation>) -> FactorResult<Arc<dyn IdentityProvider>> {
+                match config {
+                    $(
+                        ProviderConfig::[!ident_camel! $variant](config) => {
+                            let config: crate::Config<crate::providers::$variant::[!ident_camel! $variant Config]> = crate::Config::new(config.clone(), location.into());
+                            let provider = crate::providers::$variant::Provider::new(config)?;
+                            Ok(Arc::new(provider))
+                        },
+                    )*
+                }
             }
         }
     }

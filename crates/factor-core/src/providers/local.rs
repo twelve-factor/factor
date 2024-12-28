@@ -12,13 +12,13 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, prelude::*};
 use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
-use factor_error::{prelude::*, ConfigSource, FactorResult};
+use factor_error::{prelude::*, FactorResult};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use rand::{rngs::StdRng, SeedableRng};
 use rsa::{
@@ -31,10 +31,11 @@ use sha2::{Digest, Sha256};
 use crate::{
     env,
     identity::{IdentityProvider, ProviderConfig},
+    Config,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Config {
+pub struct LocalConfig {
     pub iss: String,
     pub secret: String,
     pub sub: Option<String>,
@@ -42,7 +43,7 @@ pub struct Config {
 
 #[derive(Clone)]
 pub struct Provider {
-    config: Config,
+    config: Config<LocalConfig>,
     key: EncodingKey,
     kid: String,
     jwks: JWKSet<CommonParameters>,
@@ -118,7 +119,7 @@ impl Provider {
     /// - The generated key cannot be encoded in PKCS#1 PEM format (extremely unlikely,
     ///   would indicate internal key corruption)
     /// - The PEM-encoded key cannot be converted to JWT format
-    pub fn new(config: Config) -> FactorResult<Self> {
+    pub fn new(config: Config<LocalConfig>) -> FactorResult<Self> {
         let private_key = generate_rsa_key_from_secret(&config.secret)?;
         let private_key_pem = private_key
             .to_pkcs1_pem(LineEnding::CR)
@@ -130,10 +131,10 @@ impl Provider {
         let jwks = generate_jwks(&public_key, &kid);
 
         Ok(Self {
-            config: Config { ..config },
+            config,
+            key,
             kid,
             jwks,
-            key,
         })
     }
 }
@@ -151,7 +152,9 @@ impl IdentityProvider for Provider {
     async fn get_iss_and_jwks(&self) -> FactorResult<Option<(String, String)>> {
         // if iss is still an env var, expand it now
         let iss = crate::env::expand(&self.config.iss)?;
-        let json = serde_json::to_string_pretty(&self.jwks).context(JsonSnafu)?;
+        let json = serde_json::to_string_pretty(&self.jwks).context(JsonSerializeSnafu {
+            what: "provider's JWKS",
+        })?;
         Ok(Some((iss, json)))
     }
 
@@ -159,13 +162,12 @@ impl IdentityProvider for Provider {
         let mut config = self.config.clone();
         // subject is just the name of the app for local
         config.sub = Some(name.to_string());
-        Ok(ProviderConfig::local(config))
+        Ok(ProviderConfig::local(&config))
     }
 
     async fn get_token(&self, audience: &str) -> FactorResult<String> {
-        let sub = self.config.sub.as_ref().context(MissingConfigSnafu {
-            config: ConfigSource::provider("local"),
-            at: "sub",
+        let sub = self.config.sub.as_ref().context(ConfigSnafu {
+            reason: self.config.location.missing("sub", "a subject"),
         })?;
 
         // if iss is still an env var, expand it now

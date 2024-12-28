@@ -9,22 +9,24 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+
+ariadne = { version = "0.5.0", features = ["auto-color", "concolor"] }
+base64 = "0.22.1"
 derive_more.workspace = true
 error-stack.workspace = true
 jsonwebtoken.workspace = true
+k8s-openapi.workspace = true
+macon.workspace = true
+notify = "7.0.0"
+reqwest.workspace = true
+reqwest-error = "0.0.1"
 rsa.workspace = true
-serde_json.workspace = true
 shellexpand.workspace = true
 snafu.workspace = true
-
-ariadne = { version = "0.5.0", features = ["auto-color", "concolor"] }
-notify = "7.0.0"
-vfs = "0.12.0"
-base64 = "0.22.1"
 kube.workspace = true
-reqwest-error = "0.0.1"
-reqwest.workspace = true
 toml.workspace = true
+vfs = "0.12.0"
+serde_json.workspace = true
 
 [lints]
 workspace = true

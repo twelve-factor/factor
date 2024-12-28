@@ -12,17 +12,20 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use factor_error::prelude::*;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 
-use crate::identity::{IdentityProvider, ProviderConfig};
+use crate::{
+    identity::{IdentityProvider, ProviderConfig},
+    Config,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Config {
+pub struct DummyConfig {
     pub app_name: Option<String>,
 }
 
@@ -37,7 +40,7 @@ struct Claims {
 
 #[derive(Clone)]
 pub struct Provider {
-    config: Config,
+    config: Config<DummyConfig>,
 }
 
 impl Provider {
@@ -45,7 +48,7 @@ impl Provider {
     ///
     /// The dummy provider is infallible, but `Provider::new` returns a Result for
     /// compatibility with the `identity_providers!` macro
-    pub fn new(config: Config) -> FactorResult<Self> {
+    pub fn new(config: Config<DummyConfig>) -> FactorResult<Self> {
         Ok(Self { config })
     }
 }
@@ -59,7 +62,7 @@ impl IdentityProvider for Provider {
     async fn configure_app_identity(&self, name: &str) -> FactorResult<ProviderConfig> {
         let mut config = self.config.clone();
         config.app_name = Some(name.to_string());
-        Ok(ProviderConfig::dummy(config))
+        Ok(ProviderConfig::dummy(&config))
     }
 
     async fn get_token(&self, audience: &str) -> FactorResult<String> {

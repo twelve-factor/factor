@@ -12,7 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -22,7 +22,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use factor_core::identity::IdentityProvider;
 use factor_error::FactorResult;
 use log::{error, info, trace, warn};
-use regex::Regex;
+use regex_macro::regex;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time::interval};
 
@@ -49,7 +49,7 @@ impl IdentitySyncService {
         audience: &str,
         provider: Arc<dyn IdentityProvider + Send + Sync>,
     ) -> FactorResult<Self> {
-        let safe_regex = Regex::new(r"[^a-zA-Z0-9_-]")?;
+        let safe_regex = regex!(r"[^a-zA-Z0-9_-]");
         let target_id_safe = safe_regex
             .replace_all(target_id, "_")
             .to_string()

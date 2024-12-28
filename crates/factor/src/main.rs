@@ -12,7 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 use std::{
     collections::HashMap, io::Write, net::TcpListener, path::Path, sync::Arc, time::Duration,
 };
@@ -21,7 +21,12 @@ use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use factor::{child, env, identity, ngrok, proxy, proxy::IncomingIdentity};
 use factor_commands::{parse_target, Create};
-use factor_error::{prelude::*, ConfigSource, FactorResult};
+use factor_core::Config;
+use factor_error::{
+    prelude::*,
+    sources::{ConfigError, ConfigFile, ConfigLocation},
+    FactorResult,
+};
 use log::{debug, error, info, trace, warn};
 use nonempty::NonEmpty;
 use notify::{Event, RecursiveMode, Watcher};
@@ -85,13 +90,20 @@ struct AppIdConfig {
     targets: HashMap<String, String>,
 }
 
-fn load_global_config() -> FactorResult<GlobalConfig> {
+fn load_global_config() -> FactorResult<Config<GlobalConfig>> {
     let home_dir = dirs::home_dir().context(MissingHomeDirSnafu)?;
     let config_path = home_dir.join(".factor");
+    let location = ConfigLocation::global(ConfigFile::default(config_path.clone()));
 
     match std::fs::read_to_string(config_path) {
-        Ok(contents) => Ok(toml::from_str(&contents).context(TomlSnafu)?),
-        Err(_) => Ok(GlobalConfig::default()),
+        Ok(contents) => {
+            let config = toml::from_str(&contents).with_context(|_| TomlParseSnafu {
+                input: location.clone(),
+            })?;
+
+            Ok(Config::new(config, location))
+        }
+        Err(_) => Ok(Config::new(GlobalConfig::default(), location.not_found())),
     }
 }
 
@@ -99,20 +111,20 @@ fn load_app_config(path: &str) -> FactorResult<AppConfig> {
     match std::fs::read_to_string(path) {
         Ok(contents) => {
             let expanded_contents = factor_core::env::expand(&contents)?;
-            Ok(toml::from_str(&expanded_contents).context(TomlSnafu)?)
+            Ok(toml::from_str(&expanded_contents).context(TomlParseSnafu { input: path })?)
         }
         Err(_) => Ok(AppConfig::default()),
     }
 }
 
-fn load_incoming_identity(path: &str) -> Result<IncomingIdentity, anyhow::Error> {
+fn load_incoming_identity(path: &str) -> FactorResult<IncomingIdentity> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read incoming identity file at {}: {}", path, e))?;
-    toml::from_str(&contents).or_else(|e| {
+
+    let parsed = toml::from_str(&contents).or_else(|e| {
         warn!("Failed to parse {path} as TOML, trying JSON: {e}");
-        serde_json::from_str(&contents)
-            .map_err(|e| anyhow::anyhow!("Failed to parse {} as TOML or JSON: {}", path, e))
-    })
+        serde_json::from_str(&contents).with_context(|_| JsonSnafu { input: path })
+    });
 }
 
 #[derive(Parser)]
@@ -273,15 +285,14 @@ fn handle_create(
     id_provider: Option<&String>,
     path: &String,
     id_targets: &[(String, String)],
-    global_config: &GlobalConfig,
+    global_config: &Config<GlobalConfig>,
     config_path: &String,
 ) -> FactorResult<()> {
     info!("Creating application configuration");
 
     // Ensure we have global id config
-    let global_id_config = global_config.id.as_ref().context(MissingConfigSnafu {
-        config: ConfigSource::Global,
-        at: "id",
+    let global_id_config = global_config.id.as_ref().context(ConfigSnafu {
+        reason: global_config.source.at("id", "a "),
     })?;
 
     // Get the provider - either from flag or default from global config
@@ -293,7 +304,7 @@ fn handle_create(
                     .iter()
                     .any(|p| p.name == provider_str),
                 MissingConfigSnafu {
-                    config: ConfigSource::Global,
+                    config: ConfigLocation::Global,
                     at: "providers",
                 }
             );
@@ -306,7 +317,7 @@ fn handle_create(
                 .default_provider
                 .as_deref()
                 .context(MissingConfigSnafu {
-                    config: ConfigSource::Global,
+                    config: ConfigLocation::Global,
                     at: "default_provider",
                 })?
         }
@@ -318,7 +329,7 @@ fn handle_create(
         .iter()
         .find(|p| p.name == provider_name)
         .context(MissingConfigSnafu {
-            config: ConfigSource::Global,
+            config: ConfigLocation::Global,
             at: ("provider_name", provider_name),
         })?;
 
@@ -366,7 +377,7 @@ fn handle_id(targets: &NonEmpty<(String, String)>, app_config: &AppConfig) -> Fa
     ensure!(
         !targets_map.is_empty(),
         MissingConfigSnafu {
-            config: ConfigSource::App,
+            config: ConfigLocation::App,
             at: "targets",
         }
     );
@@ -378,7 +389,7 @@ fn handle_id(targets: &NonEmpty<(String, String)>, app_config: &AppConfig) -> Fa
     let provider_config = app_config
         .id
         .context(MissingConfigSnafu {
-            config: ConfigSource::App,
+            config: ConfigLocation::App,
             at: "id",
         })?
         .provider
@@ -409,17 +420,17 @@ fn handle_proxy(
     reject_unknown: bool,
     ipv6: bool,
     app_config: &AppConfig,
-) -> Result<(), anyhow::Error> {
+) -> FactorResult<()> {
     trace!("Running proxy command");
     let incoming_identity = get_incoming_identity(incoming_identity)?;
     let runtime: Arc<Runtime> = Runtime::new()?.into();
     maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
 
-    let id = app_config
-        .id
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Identity provider is required"))?;
-    let provider = identity::create_provider(&id.provider.settings)?;
+    let id = app_config.id.with_context(|| MissingConfigSnafu {
+        config: ConfigLocation::App,
+        at: "id",
+    })?;
+    let provider = factor_core::identity::create_provider(&id.provider.settings)?;
 
     info!("Proxying port {port} to {child_port}");
     let mut server = factor::server::Server::new_from_runtime(runtime);
@@ -606,7 +617,7 @@ fn add_services(
 
 fn get_incoming_identity(
     incoming_identity_path: Option<&String>,
-) -> Result<IncomingIdentity, anyhow::Error> {
+) -> FactorResult<IncomingIdentity> {
     debug!("incoming identity path: {incoming_identity_path:?}");
     let incoming_identity = match incoming_identity_path {
         Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,

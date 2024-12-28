@@ -12,7 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 use std::{
     env,
     env::VarError,
@@ -196,9 +196,9 @@ pub fn vars() -> env::Vars {
 pub fn set_var_file(
     key: impl AsRef<OsStr>,
     value: impl AsRef<OsStr>,
-    path: &PathBuf,
+    path: &impl AsRef<Path>,
 ) -> FactorResult<()> {
-    Ok(set_var_file_with_remap(key, value, path, None, None)?)
+    set_var_file_with_remap(key, value, path, None, None)
 }
 
 /// # Errors
@@ -221,14 +221,16 @@ pub fn set_var_file(
 pub fn set_var_file_with_remap(
     key: impl AsRef<OsStr>,
     value: impl AsRef<OsStr>,
-    path: &PathBuf,
+    path: &impl AsRef<Path>,
     from: Option<&str>,
     to: Option<&str>,
 ) -> FactorResult<()> {
+    let path = path.as_ref();
+
     let canonicalized_parent = path
         .parent()
-        .context(PathSnafu {
-            reason: format!("Failed to get parent path from {}", path.display()),
+        .context(GenericSnafu {
+            message: format!("Failed to get parent path from {}", path.display()),
         })?
         .canonicalize();
 
@@ -265,14 +267,15 @@ pub fn set_var_file_with_remap(
         reason: "Failed to create temporary file".to_string(),
     })?;
     let temp_path = temp_file.into_temp_path();
-    fs::write(&temp_path, value.as_ref().to_string_lossy().as_bytes()).with_context(|| {
+    fs::write(&temp_path, value.as_ref().to_string_lossy().as_bytes()).with_context(|_| {
         IoSnafu {
             reason: "Failed to write to temporary file".to_string(),
         }
     })?;
-    fs::rename(&temp_path, &canonical_path).with_context(|| GenericSnafu {
-        message: "Failed to rename temporary file".to_string(),
+    fs::rename(&temp_path, &canonical_path).context(IoSnafu {
+        reason: "Failed to rename temporary file",
     })?;
+
     Ok(())
 }
 
@@ -288,10 +291,11 @@ pub fn set_var_json(key: impl AsRef<OsStr>, value: &impl serde::Serialize) -> Re
 /// # Errors
 ///
 /// See [`set_var_json_file_with_remap`]
-pub fn set_var_json_file<K: AsRef<OsStr>, V>(key: K, value: &V, path: &PathBuf) -> Result<()>
-where
-    V: serde::Serialize,
-{
+pub fn set_var_json_file<K: AsRef<OsStr>, V>(
+    key: impl AsRef<OsStr>,
+    value: &impl serde::Serialize,
+    path: &PathBuf,
+) -> FactorResult<()> {
     set_var_json_file_with_remap(key, value, path, None, None)
 }
 
@@ -304,17 +308,20 @@ where
 /// - the parent of the path doesn't exist
 ///
 /// See [`set_var_file_with_remap`] for more uncommon error conditions
-pub fn set_var_json_file_with_remap<K: AsRef<OsStr>, V>(
-    key: K,
-    value: &V,
+pub fn set_var_json_file_with_remap(
+    key: impl AsRef<OsStr>,
+    value: &impl serde::Serialize,
     path: &PathBuf,
     from: Option<&str>,
     to: Option<&str>,
-) -> Result<()>
-where
-    V: serde::Serialize,
-{
-    let json_string = serde_json::to_string(value)?;
+) -> FactorResult<()> {
+    let json_string = serde_json::to_string(value).with_context(|_| JsonSerializeSnafu {
+        what: format!(
+            "value for {key} for {path}",
+            key = key.as_ref().to_string_lossy(),
+            path = path.to_string_lossy(),
+        ),
+    })?;
     set_var_file_with_remap(key, json_string.as_str(), path, from, to)
 }
 

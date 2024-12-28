@@ -12,13 +12,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-factor-core.workspace = true
-factor-error.workspace = true
-factor-commands.workspace = true
-
-kube = { workspace = true, features = ["derive", "runtime"] }
-toml.workspace = true
-rsa.workspace = true
 
 anyhow = "1.0"
 async-trait = "0.1.83"
@@ -29,20 +22,29 @@ clap = { version = "4.5.23", features = ["derive", "env"] }
 dirs = "5.0"
 dotenvy = "0.15.7"
 env_logger = "0.11.5"
+factor-commands.workspace = true
+factor-core.workspace = true
+factor-error.workspace = true
 http = "1.1.0"
 jsonwebtoken = "9.3"
-k8s-openapi = { version = "0.23.0", features = ["latest"] }
+k8s-openapi.workspace = true
+
+kube = { workspace = true, features = ["derive", "runtime"] }
 log = "0.4.22"
 ngrok = "0.13.1"
+nonempty = "0.11.0"
 notify = "7.0.0"
 num-bigint = "0.4.6"
 pingora = "0.4.0"
 pingora-core = "0.4.0"
 pingora-http = "0.4.0"
 pingora-proxy = "0.4.0"
+preinterpret = "0.2.0"
 rand = "0.8.5"
 regex = "1.11"
+regex-macro = "0.2.0"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+rsa.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.11"
@@ -51,7 +53,7 @@ shellexpand = "3.1.0"
 strum_macros = "0.26"
 tempfile = "3.14.0"
 tokio = { version = "1.41", features = ["full"] }
-nonempty = "0.11.0"
+toml.workspace = true
 
 [dev-dependencies]
 xshell = "0.2.7"

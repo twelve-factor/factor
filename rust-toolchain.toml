@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly"
+channel = "stable"
 components = ["clippy", "rustfmt"]
 
 # Document potential targets that we may want to build for

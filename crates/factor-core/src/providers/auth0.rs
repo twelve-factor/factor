@@ -1,28 +1,16 @@
-/*
- * Copyright 2024 The Twelve-Factor Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 use async_trait::async_trait;
 use factor_error::prelude::*;
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::identity::{IdentityProvider, ProviderConfig};
+use crate::{
+    identity::{IdentityProvider, ProviderConfig},
+    Config,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Config {
+pub struct Auth0Config {
     pub issuer: Option<String>,
     pub client_id: Option<String>,
     pub client_secret: Option<String>,
@@ -30,7 +18,7 @@ pub struct Config {
 
 #[derive(Clone)]
 pub struct Provider {
-    config: Config,
+    pub(crate) config: Config<Auth0Config>,
     client: Client,
 }
 
@@ -42,7 +30,7 @@ impl Provider {
     /// - `config.issuer` is not set
     /// - `config.client_id` is not set
     /// - `config.client_secret` is not set
-    pub fn new(config: Config) -> FactorResult<Self> {
+    pub fn new(config: Config<Auth0Config>) -> FactorResult<Self> {
         ensure!(
             config.issuer.is_some(),
             GenericSnafu {
@@ -211,7 +199,7 @@ impl IdentityProvider for Provider {
         config.client_id = Some(app_response["client_id"].as_str().unwrap().to_string());
         config.client_secret = Some(app_response["client_secret"].as_str().unwrap().to_string());
 
-        Ok(ProviderConfig::auth0(config))
+        Ok(ProviderConfig::auth0(&config))
     }
 
     async fn ensure_audience(&self, audience: &str) -> FactorResult<()> {

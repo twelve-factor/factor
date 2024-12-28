@@ -1,4 +1,7 @@
 {
+  "rust-analyzer.rustfmt.extraArgs": [
+    "+nightly"
+  ],
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.rustfmt.rangeFormatting.enable": true,
   "rust-analyzer.checkOnSave": true,
@@ -10,10 +13,10 @@
   "rust-analyzer.semanticHighlighting.punctuation.enable": true,
   "rust-analyzer.semanticHighlighting.punctuation.separate.macro.bang": true,
   "rust-analyzer.semanticHighlighting.punctuation.specialization.enable": true,
-  "[rust]": {
-    "editor.codeActionsOnSave": {
-      "source.fixAll": "always"
-    }
+  "rust-analyzer.imports.preferPrelude": true,
+  "explorer.excludeGitIgnore": false,
+  "files.exclude": {
+    ".vscode/*.local.json": false
   },
-  "rust-analyzer.imports.preferPrelude": true
+  "rust-analyzer.check.targets": "x86_64-unknown-linux-gnu"
 }

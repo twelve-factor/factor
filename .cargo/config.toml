@@ -8,3 +8,4 @@ rustflags = ["-Z", "threads=8"]
 
 [alias]
 lint-all = ["--all-features", "--all-targets", "clippy"]
+check-all = ["--all", "--profile", "check", "fast-dev"]
