@@ -15,7 +15,7 @@
  */
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, prelude::*};
 use biscuit::jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK};
@@ -186,5 +186,12 @@ impl IdentityProvider for Provider {
         let token = encode(&header, &claims, &self.key)?;
 
         Ok(token)
+    }
+
+    async fn get_sub(&self) -> Result<String> {
+        self.config
+            .sub
+            .clone()
+            .ok_or_else(|| anyhow!("Subject not configured"))
     }
 }

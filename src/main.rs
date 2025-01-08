@@ -19,7 +19,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use factor::{child, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
+use factor::{child, dirs, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
 use log::{debug, error, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -83,8 +83,7 @@ struct AppIdConfig {
 }
 
 fn load_global_config() -> Result<GlobalConfig, anyhow::Error> {
-    let home_dir =
-        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let home_dir = dirs::home_dir()?;
     let config_path = home_dir.join(".factor");
 
     match std::fs::read_to_string(config_path) {
@@ -215,12 +214,14 @@ enum Commands {
         #[arg(required = true)]
         command: Vec<String>,
     },
+    /// Print issuer and subject from identity token
+    Issuer,
 }
 
 fn main() -> Result<(), anyhow::Error> {
     dotenv().ok();
     // Initialize the logger from the environment
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let global_config = load_global_config()?;
 
     let cli = Cli::parse();
@@ -299,7 +300,43 @@ fn main() -> Result<(), anyhow::Error> {
                 &app_config,
             )?;
         }
+        Commands::Issuer => {
+            handle_issuer(&app_config)?;
+        }
     }
+    Ok(())
+}
+
+fn handle_issuer(app_config: &AppConfig) -> Result<(), anyhow::Error> {
+    // Get the provider from app config
+    let id_config = app_config.id.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("No identity configuration found in app config")
+    })?;
+    
+    // Create provider
+    let provider = identity::create_provider(&id_config.provider.settings)?;
+    let rt = Runtime::new()?;
+
+    // Get issuer from stored value, or fallback to getting it from a token
+    let issuer = if let Ok(iss) = identity::get_stored_issuer() {
+        iss
+    } else {
+        info!("Could not get stored issuer, falling back to generating a token");
+        // Generate a token with a dummy audience to extract issuer
+        let token = rt.block_on(provider.get_token("dummy-audience"))?;
+        let claims = identity::get_claims(&token)?;
+        claims.iss
+    };
+
+    // Get subject directly
+    let subject = rt.block_on(provider.get_sub())?;
+
+    // Print in key=value format
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    writeln!(handle, "issuer={issuer}")?;
+    writeln!(handle, "subject={subject}")?;
+
     Ok(())
 }
 

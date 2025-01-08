@@ -27,6 +27,9 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time::interval};
 
 use super::{env, server::Service};
+use crate::dirs;
+
+const ISSUER_FILENAME: &str = "issuer";
 
 macro_rules! identity_providers {
     ($($variant:ident),*) => {
@@ -76,6 +79,7 @@ identity_providers!(dummy, auth0, k8s, local);
 pub trait IdentityProvider: Send + Sync {
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig>;
     async fn ensure_audience(&self, audience: &str) -> Result<()>;
+    async fn get_sub(&self) -> Result<String>;
     async fn get_token(&self, audience: &str) -> Result<String>;
     async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>>;
 }
@@ -85,6 +89,7 @@ pub struct IdentitySyncService {
     path: PathBuf,
     audience: String,
     provider: Arc<dyn IdentityProvider + Send + Sync>,
+    issuer_path: PathBuf,
 }
 
 impl IdentitySyncService {
@@ -109,6 +114,8 @@ impl IdentitySyncService {
         let key = format!("{}_{}", target_id_safe, "IDENTITY");
         let filename = format!("{target_id}.token");
         let path = PathBuf::from(path).join(filename);
+        let issuer_path = dirs::get_data_dir()?.join(ISSUER_FILENAME);
+
         // make sure that we empty any existing old identity
         env::set_var_file(&key, "", &path)?;
         let service = IdentitySyncService {
@@ -116,15 +123,27 @@ impl IdentitySyncService {
             path,
             audience: audience.to_string(),
             provider,
+            issuer_path,
         };
-        // set up env vars
         Ok(service)
+    }
+
+    async fn write_issuer(&self) -> Result<()> {
+        if let Some((issuer, _)) = self.provider.get_iss_and_jwks().await? {
+            env::set_var_file("ISSUER", &issuer, &self.issuer_path)?;
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl Service for IdentitySyncService {
     async fn start(&mut self, mut shutdown: watch::Receiver<bool>) {
+        // Write issuer at startup
+        if let Err(e) = self.write_issuer().await {
+            warn!("Failed to write issuer: {}", e);
+        }
+
         if let Err(e) = self.provider.ensure_audience(&self.audience).await {
             warn!(
                 "Failed to create or verify API for audience {}: {}",
@@ -136,7 +155,10 @@ impl Service for IdentitySyncService {
         loop {
             tokio::select! {
                 _ = shutdown.changed() => {
-                    // shutdown
+                    // Clean up issuer file on shutdown
+                    if let Err(e) = std::fs::remove_file(&self.issuer_path) {
+                        warn!("Failed to remove issuer file: {}", e);
+                    }
                     break;
                 }
                 _ = period.tick() => {
@@ -216,4 +238,17 @@ pub fn get_claims(jwt: &str) -> Result<Claims> {
     let claims: Claims = serde_json::from_slice(&payload)?;
 
     Ok(claims)
+}
+
+/// Get the stored issuer from the data directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Cannot access data directory
+/// - Issuer file doesn't exist or can't be read
+pub fn get_stored_issuer() -> Result<String> {
+    let issuer_path = dirs::get_data_dir()?.join(ISSUER_FILENAME);
+    std::fs::read_to_string(&issuer_path)
+        .map_err(|e| anyhow!("Failed to read issuer file: {}", e))
 }

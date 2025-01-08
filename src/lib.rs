@@ -19,6 +19,7 @@ pub mod identity;
 pub mod ngrok;
 pub mod proxy;
 pub mod server;
+pub mod dirs;
 
 #[test]
 fn check_code_formatting() {
