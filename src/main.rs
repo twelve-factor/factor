@@ -25,6 +25,7 @@ use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tokio::{
     runtime::Runtime,
+    signal,
     sync::{oneshot, watch},
     time::sleep,
 };
@@ -564,7 +565,8 @@ fn handle_run(
 
     let (file_tx, mut file_rx) = setup_env_watcher()?;
     runtime.block_on(async {
-        loop {
+        let mut should_exit = false;
+        while !should_exit {
             let mut server = factor::server::Server::new_from_runtime(runtime.clone());
             add_services(
                 &mut server,
@@ -577,19 +579,130 @@ fn handle_run(
             )?;
 
             server.run();
-            while !*file_rx.borrow_and_update() {
-                file_rx.changed().await.unwrap();
-            }
+            trace!("Waiting for changes");
+            wait_for_signals(&mut server, &file_tx, &mut file_rx, &mut should_exit).await?;
+        }
+        Ok(())
+    })
+}
+
+#[cfg(unix)]
+async fn wait_for_signals(
+    server: &mut factor::server::Server,
+    file_tx: &tokio::sync::watch::Sender<bool>,
+    file_rx: &mut tokio::sync::watch::Receiver<bool>,
+    should_exit: &mut bool,
+) -> Result<(), anyhow::Error> {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("Failed to listen for Ctrl-C");
+    };
+
+    let (hangup, interrupt, terminate, quit) = (
+        async {
+            signal::unix::signal(signal::unix::SignalKind::hangup())
+                .expect("Failed to listen for SIGHUP")
+                .recv()
+                .await;
+        },
+        async {
+            signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("Failed to listen for SIGINT")
+                .recv()
+                .await;
+        },
+        async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("Failed to listen for SIGTERM")
+                .recv()
+                .await;
+        },
+        async {
+            signal::unix::signal(signal::unix::SignalKind::quit())
+                .expect("Failed to listen for SIGQUIT")
+                .recv()
+                .await;
+        }
+    );
+
+    let waiter = server.wait_for_any_service();
+
+    tokio::select! {
+        () = waiter => {
+            info!("A service exited. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = ctrl_c => {
+            info!("Ctrl-C received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = hangup => {
+            info!("SIGHUP received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = interrupt => {
+            info!("SIGINT received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = terminate => {
+            info!("SIGTERM received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = quit => {
+            info!("SIGQUIT received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        _ = file_rx.changed() => {
             sleep(Duration::from_millis(300)).await;
-
-            info!("Sending shutdown signal to all services...");
-            server.shutdown();
-
+            info!("File change detected. Restarting services...");
+            server.shutdown().await;
             file_tx.send(false)?;
-
             info!("All services shut down. Restarting...");
         }
-    })
+    };
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn wait_for_signals(
+    server: &mut factor::server::Server,
+    file_tx: &tokio::sync::watch::Sender<bool>,
+    file_rx: &mut tokio::sync::watch::Receiver<bool>,
+    should_exit: &mut bool,
+) -> Result<(), anyhow::Error> {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("Failed to listen for Ctrl-C");
+    };
+
+    let waiter = server.wait_for_any_service();
+
+    tokio::select! {
+        () = waiter => {
+            info!("A service exited. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        () = ctrl_c => {
+            info!("Ctrl-C received. Stopping server...");
+            server.shutdown().await;
+            *should_exit = true;
+        },
+        _ = file_rx.changed() => {
+            sleep(Duration::from_millis(300)).await;
+            info!("File change detected. Restarting services...");
+            server.shutdown().await;
+            file_tx.send(false)?;
+            info!("All services shut down. Restarting...");
+        }
+    };
+
+    Ok(())
 }
 
 fn add_services(

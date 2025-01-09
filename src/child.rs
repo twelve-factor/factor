@@ -1,5 +1,3 @@
-use async_trait::async_trait;
-use log::{error, trace, warn};
 /*
  * Copyright 2024 The Twelve-Factor Authors
  *
@@ -15,11 +13,14 @@ use log::{error, trace, warn};
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use tokio::process::Command;
+use async_trait::async_trait;
+use log::{error, trace, warn};
 use tokio::{
+    process::{Child, Command},
     sync::watch,
     time::{sleep, Duration},
 };
+
 
 use super::{env, server::Service};
 
@@ -38,6 +39,41 @@ impl ChildService {
             wait_for,
         }
     }
+}
+
+#[cfg(unix)]
+async fn terminate(mut child: Child) {
+    use libc::{kill, SIGTERM};
+    use tokio::time::timeout;
+
+    #[allow(clippy::cast_possible_wrap)]
+    let pid = child.id().unwrap() as libc::pid_t; // Get the process ID of the child
+
+    unsafe { kill(pid, SIGTERM) }; // Send SIGTERM to the process
+    if let Ok(status_result) = timeout(Duration::from_secs(5), child.wait()).await { match status_result {
+        Ok(exit_status) => {
+            if exit_status.success() {
+                trace!("Child process exited successfully");
+            } else {
+                warn!("Child process exited with status: {}", exit_status);
+            }
+        }
+        Err(e) => {
+            error!("Failed to wait for child process: {e}");
+        }
+    } } else {
+        // Timeout expired, hard kill the process
+        warn!("Timeout expired, forcefully killing the child process");
+        if let Err(e) = child.start_kill() {
+            error!("Failed to forcefully kill child process: {e}");
+        }
+    }
+}
+
+
+#[cfg(not(unix))]
+async fn terminate(mut child: Child) {
+    let _ = child.kill().await;
 }
 
 #[async_trait]
@@ -66,10 +102,20 @@ impl Service for ChildService {
                 // Wait for shutdown signal
                 tokio::select! {
                     _ = shutdown.changed() => {
-                        if let Err(e) = child.kill().await {
-                            warn!("Failed to kill child process: {e}");
-                        } else {
-                            trace!("Child process killed successfully");
+                        terminate(child).await;
+                    }
+                    status = child.wait() => {
+                        match status {
+                            Ok(exit_status) => {
+                                if exit_status.success() {
+                                    trace!("Child process exited successfully");
+                                } else {
+                                    warn!("Child process exited with status: {}", exit_status);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to wait for child process: {e}");
+                            }
                         }
                     }
                 }

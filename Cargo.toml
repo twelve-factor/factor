@@ -46,6 +46,9 @@ toml = "0.8"
 directories = "5.0"
 futures = "0.3.31"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.169"
+
 [dev-dependencies]
 xshell = "0.2.7"
 

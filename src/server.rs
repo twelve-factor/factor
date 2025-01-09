@@ -17,8 +17,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::info;
-use tokio::{runtime::Runtime, sync::watch, task::JoinHandle};
+use log::{trace, error};
+use tokio::{runtime::Runtime, sync::watch, task::JoinSet};
 
 #[async_trait]
 pub trait Service: Send + Sync {
@@ -29,7 +29,7 @@ pub trait Service: Send + Sync {
 
 pub struct Server {
     services: Vec<Box<dyn Service>>,
-    handles: Vec<JoinHandle<()>>,
+    handles: JoinSet<()>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     runtime: Arc<Runtime>,
@@ -58,7 +58,7 @@ impl Server {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         Server {
             services: vec![],
-            handles: vec![],
+            handles: JoinSet::new(),
             shutdown_tx,
             shutdown_rx,
             runtime,
@@ -72,24 +72,40 @@ impl Server {
     pub fn run(&mut self) {
         let services = std::mem::take(&mut self.services);
 
+        // Enter the runtime context manually
+        let _guard = self.runtime.enter();
+
         for mut service in services {
             let shutdown = self.shutdown_rx.clone();
-            let handle = self.runtime.spawn(async move {
+            self.handles.spawn(async move {
                 service.start(shutdown).await;
             });
-            self.handles.push(handle);
         }
     }
 
     /// # Panics
     ///
     /// Panics if the shutdown channel is already closed.
-    pub fn shutdown(&mut self) {
-        info!("Sending shutdown signal to all services...");
+    pub async fn shutdown(&mut self) {
+        trace!("Sending shutdown signal to all services...");
         self.shutdown_tx
             .send(true)
             .expect("Failed to send shutdown signal");
-        self.wait_for_exit();
+        self.wait_internal().await;
+    }
+
+    async fn wait_internal(&mut self) {
+        while let Some(result) = self.handles.join_next().await {
+            match result {
+                Ok(()) => {
+                    trace!("A service task exited successfully");
+                }
+                Err(e) => {
+                    error!("A service task exited with an error: {e}");
+                }
+            }
+        }
+        trace!("All service tasks have exited");
     }
 
     /// # Panics
@@ -97,11 +113,18 @@ impl Server {
     /// Panics if awaiting any of the join handles fails. This
     /// is most likely due to a panic in one of the services.  
     pub fn wait_for_exit(&mut self) {
-        let handles = std::mem::take(&mut self.handles);
-        self.runtime.block_on(async move {
-            for handle in handles {
-                handle.await.unwrap();
-            }
-        });
+        let runtime = self.runtime.clone();
+        runtime.block_on(self.wait_internal());
     }
+
+    pub async fn wait_for_any_service(&mut self) {
+        if let Some(result) = self.handles.join_next().await {
+            if let Err(e) = result {
+                error!("A service task exited with an error: {e}");
+            } else {
+                trace!("A service task exited successfully");
+            }
+        }
+    }
+
 }
