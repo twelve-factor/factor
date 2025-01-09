@@ -179,11 +179,13 @@ impl IdentityProvider for Provider {
     }
 
     async fn get_sub(&self) -> Result<String> {
-        let sa_name = self.config
+        let sa_name = self
+            .config
             .service_account_name
             .as_ref()
             .context("Service account name not configured")?;
-        let namespace = self.config
+        let namespace = self
+            .config
             .namespace
             .as_ref()
             .context("Namespace not configured")?;

@@ -292,7 +292,8 @@ impl IdentityProvider for Provider {
     }
 
     async fn get_sub(&self) -> Result<String> {
-        let client_id = self.config
+        let client_id = self
+            .config
             .client_id
             .as_ref()
             .context("Client ID not configured")?;

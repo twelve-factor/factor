@@ -21,7 +21,6 @@ use tokio::{
     time::{sleep, Duration},
 };
 
-
 use super::{env, server::Service};
 
 pub struct ChildService {
@@ -50,18 +49,20 @@ async fn terminate(mut child: Child) {
     let pid = child.id().unwrap() as libc::pid_t; // Get the process ID of the child
 
     unsafe { kill(pid, SIGTERM) }; // Send SIGTERM to the process
-    if let Ok(status_result) = timeout(Duration::from_secs(5), child.wait()).await { match status_result {
-        Ok(exit_status) => {
-            if exit_status.success() {
-                trace!("Child process exited successfully");
-            } else {
-                warn!("Child process exited with status: {}", exit_status);
+    if let Ok(status_result) = timeout(Duration::from_secs(5), child.wait()).await {
+        match status_result {
+            Ok(exit_status) => {
+                if exit_status.success() {
+                    trace!("Child process exited successfully");
+                } else {
+                    warn!("Child process exited with status: {}", exit_status);
+                }
+            }
+            Err(e) => {
+                error!("Failed to wait for child process: {e}");
             }
         }
-        Err(e) => {
-            error!("Failed to wait for child process: {e}");
-        }
-    } } else {
+    } else {
         // Timeout expired, hard kill the process
         warn!("Timeout expired, forcefully killing the child process");
         if let Err(e) = child.start_kill() {
@@ -69,7 +70,6 @@ async fn terminate(mut child: Child) {
         }
     }
 }
-
 
 #[cfg(not(unix))]
 async fn terminate(mut child: Child) {

@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 pub mod child;
+pub mod dirs;
 pub mod env;
 pub mod identity;
 pub mod ngrok;
 pub mod proxy;
 pub mod server;
-pub mod dirs;
 
 #[test]
 fn check_code_formatting() {

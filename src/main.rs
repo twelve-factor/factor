@@ -19,7 +19,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use factor::{child, dirs, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity};
+use factor::{
+    child, dirs, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity,
+};
 use log::{debug, error, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -310,10 +312,11 @@ fn main() -> Result<(), anyhow::Error> {
 
 fn handle_issuer(app_config: &AppConfig) -> Result<(), anyhow::Error> {
     // Get the provider from app config
-    let id_config = app_config.id.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("No identity configuration found in app config")
-    })?;
-    
+    let id_config = app_config
+        .id
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No identity configuration found in app config"))?;
+
     // Create provider
     let provider = identity::create_provider(&id_config.provider.settings)?;
     let rt = Runtime::new()?;
@@ -621,7 +624,7 @@ async fn wait_for_signals(
                 .expect("Failed to listen for SIGQUIT")
                 .recv()
                 .await;
-        }
+        },
     );
 
     let waiter = server.wait_for_any_service();

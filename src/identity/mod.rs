@@ -249,6 +249,5 @@ pub fn get_claims(jwt: &str) -> Result<Claims> {
 /// - Issuer file doesn't exist or can't be read
 pub fn get_stored_issuer() -> Result<String> {
     let issuer_path = dirs::get_data_dir()?.join(ISSUER_FILENAME);
-    std::fs::read_to_string(&issuer_path)
-        .map_err(|e| anyhow!("Failed to read issuer file: {}", e))
+    std::fs::read_to_string(&issuer_path).map_err(|e| anyhow!("Failed to read issuer file: {}", e))
 }

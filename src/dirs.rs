@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use std::path::PathBuf;
+
 use anyhow::Result;
 use directories::ProjectDirs;
-use std::path::PathBuf;
 
 const QUALIFIER: &str = "dev";
 const ORGANIZATION: &str = "twelve-factor";
@@ -31,7 +32,7 @@ const APPLICATION: &str = "factor";
 pub fn get_data_dir() -> Result<PathBuf> {
     let proj_dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
         .ok_or_else(|| anyhow::anyhow!("Could not determine project directories"))?;
-    
+
     let data_dir = proj_dirs.data_dir();
     std::fs::create_dir_all(data_dir)?;
     Ok(data_dir.to_path_buf())

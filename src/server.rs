@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{trace, error};
+use log::{error, trace};
 use tokio::{runtime::Runtime, sync::watch, task::JoinSet};
 
 #[async_trait]
@@ -126,5 +126,4 @@ impl Server {
             }
         }
     }
-
 }
