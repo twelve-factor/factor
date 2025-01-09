@@ -26,8 +26,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time::interval};
 
-use super::{env, server::Service};
-use crate::dirs;
+use super::{dirs, env, server::Service};
 
 const ISSUER_FILENAME: &str = "issuer";
 
