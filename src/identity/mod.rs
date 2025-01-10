@@ -9,7 +9,7 @@ use log::{error, info, trace, warn};
 pub use providers::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::{fs::File, io::AsyncWriteExt, sync::watch, time::interval};
+use tokio::{fs::write, sync::watch, time::interval};
 
 use super::{dirs, env, server::Service};
 
@@ -117,8 +117,7 @@ impl IdentitySyncService {
 
     async fn write_issuer(&self) -> Result<()> {
         let issuer = self.provider.get_iss().await?;
-        let mut file = File::create(&self.issuer_path).await?;
-        file.write_all(issuer.as_bytes()).await?;
+        write(&self.issuer_path, issuer.as_bytes()).await?;
         Ok(())
     }
 }
