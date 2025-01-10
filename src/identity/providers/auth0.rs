@@ -85,9 +85,8 @@ struct Auth0Response {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
-        // No jwks management
-        Ok(None)
+    async fn get_iss(&self) -> Result<String> {
+        self.config.issuer.clone().context("Issuer not configured")
     }
 
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {

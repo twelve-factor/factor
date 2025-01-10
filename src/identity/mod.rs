@@ -9,7 +9,7 @@ use log::{error, info, trace, warn};
 pub use providers::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::{sync::watch, time::interval};
+use tokio::{fs::File, io::AsyncWriteExt, sync::watch, time::interval};
 
 use super::{dirs, env, server::Service};
 
@@ -65,7 +65,10 @@ pub trait IdentityProvider: Send + Sync {
     async fn ensure_audience(&self, audience: &str) -> Result<()>;
     async fn get_sub(&self) -> Result<String>;
     async fn get_token(&self, audience: &str) -> Result<String>;
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>>;
+    async fn get_iss(&self) -> Result<String>;
+    async fn get_jwks(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 pub struct IdentitySyncService {
@@ -113,9 +116,9 @@ impl IdentitySyncService {
     }
 
     async fn write_issuer(&self) -> Result<()> {
-        if let Some((issuer, _)) = self.provider.get_iss_and_jwks().await? {
-            env::set_var_file("ISSUER", &issuer, &self.issuer_path)?;
-        }
+        let issuer = self.provider.get_iss().await?;
+        let mut file = File::create(&self.issuer_path).await?;
+        file.write_all(issuer.as_bytes()).await?;
         Ok(())
     }
 }
