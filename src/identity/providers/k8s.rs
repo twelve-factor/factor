@@ -177,4 +177,18 @@ impl IdentityProvider for Provider {
             .map(|status| status.token)
             .context("Failed to extract token from response")
     }
+
+    async fn get_sub(&self) -> Result<String> {
+        let sa_name = self
+            .config
+            .service_account_name
+            .as_ref()
+            .context("Service account name not configured")?;
+        let namespace = self
+            .config
+            .namespace
+            .as_ref()
+            .context("Namespace not configured")?;
+        Ok(format!("system:serviceaccount:{namespace}:{sa_name}"))
+    }
 }

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 pub mod child;
+pub mod dirs;
 pub mod env;
 pub mod identity;
 pub mod ngrok;

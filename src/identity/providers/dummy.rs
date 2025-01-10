@@ -88,4 +88,12 @@ impl IdentityProvider for Provider {
 
         Ok(token)
     }
+
+    async fn get_sub(&self) -> Result<String> {
+        Ok(self
+            .config
+            .app_name
+            .clone()
+            .unwrap_or_else(|| "dummy-subject".to_string()))
+    }
 }

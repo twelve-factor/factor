@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
@@ -289,5 +289,14 @@ impl IdentityProvider for Provider {
             .await?;
 
         Ok(auth_resp.access_token)
+    }
+
+    async fn get_sub(&self) -> Result<String> {
+        let client_id = self
+            .config
+            .client_id
+            .as_ref()
+            .context("Client ID not configured")?;
+        Ok(client_id.to_string())
     }
 }
