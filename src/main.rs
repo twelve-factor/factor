@@ -310,11 +310,8 @@ fn handle_issuer(app_config: &AppConfig) -> Result<(), anyhow::Error> {
     let issuer = if let Ok(iss) = identity::get_stored_issuer() {
         iss
     } else {
-        info!("Could not get stored issuer, falling back to generating a token");
-        // Generate a token with a dummy audience to extract issuer
-        let token = rt.block_on(provider.get_token("dummy-audience"))?;
-        let claims = identity::get_claims(&token)?;
-        claims.iss
+        info!("Could not get stored issuer, falling back to provider");
+        rt.block_on(provider.get_iss())?
     };
 
     // Get subject directly

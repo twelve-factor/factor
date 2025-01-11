@@ -132,11 +132,13 @@ struct Claims {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
+    async fn get_iss(&self) -> Result<String> {
         // if iss is still an env var, expand it now
-        let iss = env::expand(&self.config.iss)?;
+        env::expand(&self.config.iss)
+    }
+    async fn get_jwks(&self) -> Result<Option<String>> {
         let json = serde_json::to_string_pretty(&self.jwks)?;
-        Ok(Some((iss, json)))
+        Ok(Some(json))
     }
 
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {

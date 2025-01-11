@@ -39,12 +39,8 @@ pub struct AuthProxy {
 }
 
 impl AuthProxy {
-    async fn handle_well_known(
-        &self,
-        session: &mut Session,
-        iss: String,
-        jwks: String,
-    ) -> anyhow::Result<()> {
+    async fn handle_well_known(&self, session: &mut Session, jwks: String) -> anyhow::Result<()> {
+        let iss = self.provider.get_iss().await?;
         let path = session.req_header().uri.path();
         let resp_str = if path.starts_with("/.well-known/openid-configuration") {
             // Generate the OIDC discovery response
@@ -180,8 +176,8 @@ impl ProxyHttp for AuthProxy {
 
     async fn request_filter(&self, session: &mut Session, _ctx: &mut Self::CTX) -> Result<bool> {
         if session.req_header().uri.path().starts_with("/.well-known/") {
-            if let Ok(Some((iss, jwks))) = self.provider.get_iss_and_jwks().await {
-                if let Err(e) = self.handle_well_known(session, iss, jwks).await {
+            if let Ok(Some(jwks)) = self.provider.get_jwks().await {
+                if let Err(e) = self.handle_well_known(session, jwks).await {
                     info!("Failed to handle well_known {e:?}");
                     let _ = session.respond_error(500).await;
                     return Ok(true);

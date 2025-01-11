@@ -37,9 +37,8 @@ impl Provider {
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
-        // No jwks management
-        Ok(None)
+    async fn get_iss(&self) -> Result<String> {
+        Ok("dummy-issuer".to_string())
     }
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
         let mut config = self.config.clone();

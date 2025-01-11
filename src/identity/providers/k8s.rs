@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use http::uri::Uri;
@@ -11,9 +13,10 @@ use kube::{
     Client,
 };
 use log::trace;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, RwLock};
 
 use crate::identity::{IdentityProvider, ProviderConfig};
 
@@ -21,8 +24,7 @@ use crate::identity::{IdentityProvider, ProviderConfig};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     #[serde_as(as = "Option<DisplayFromStr>")]
-    pub cluster_url: Option<Uri>,
-    pub namespace: Option<String>,
+    pub default_namespace: Option<String>,
     pub service_account_name: Option<String>,
     pub kubeconfig_path: Option<String>,
 }
@@ -30,6 +32,7 @@ pub struct Config {
 #[derive(Clone)]
 pub struct Provider {
     config: Config,
+    issuer: Arc<RwLock<Option<String>>>,
     client: OnceCell<Client>,
 }
 
@@ -41,6 +44,7 @@ impl Provider {
     pub fn new(config: Config) -> Result<Self> {
         Ok(Self {
             config,
+            issuer: Arc::new(RwLock::new(None)),
             client: OnceCell::new(),
         })
     }
@@ -87,13 +91,68 @@ impl Provider {
             })
             .await
     }
+
+    /// # Errors
+    ///
+    /// This method returns an [`anyhow::Error`] if:
+    ///
+    /// - Configuration error in `self.config.kubeconfig_path`:
+    ///     - the config file does not exist
+    ///     - the config file is not valid YAML
+    ///     - the config file is missing a context
+    ///     - see [`kube::config::Kubeconfig::read_from`]
+    ///     - see [`kube::config::Config::from_custom_kubeconfig`]
+    ///
+    /// - The cluster URL cannot be inferred from the Kubernetes configuration.
+    ///
+    /// - See [`kube::Config::infer`]
+    pub async fn get_cluster_url(&self) -> Result<Uri> {
+        if let Some(path) = &self.config.kubeconfig_path {
+            let kube_config = kube::config::Kubeconfig::read_from(path)
+                .context("Failed to read kubeconfig from path")?;
+            let client_config = kube::config::Config::from_custom_kubeconfig(
+                kube_config,
+                &KubeConfigOptions::default(),
+            )
+            .await
+            .context("Failed to create config from kubeconfig")?;
+            Ok(client_config.cluster_url)
+        } else {
+            let config = kube::Config::infer()
+                .await
+                .context("Failed to infer Kubernetes config")?;
+            Ok(config.cluster_url)
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OidcDiscovery {
+    issuer: String,
+    // Add other fields if needed
 }
 
 #[async_trait]
 impl IdentityProvider for Provider {
-    async fn get_iss_and_jwks(&self) -> Result<Option<(String, String)>> {
-        // No jwks management
-        Ok(None)
+    async fn get_iss(&self) -> Result<String> {
+        if let Some(issuer) = &*self.issuer.read().await {
+            return Ok(issuer.clone());
+        }
+
+        let cluster_url = self.get_cluster_url().await?;
+
+        // Convert http::Uri to url::Url
+        let cluster_url =
+            Url::parse(&cluster_url.to_string()).context("Failed to parse cluster URL")?;
+
+        let discovery_url = cluster_url.join(".well-known/openid-configuration")?;
+        let response = reqwest::get(discovery_url).await?;
+        let oidc_discovery: OidcDiscovery = response.json().await?;
+
+        *self.issuer.write().await = Some(oidc_discovery.issuer.clone());
+
+        // Return the issuer URL
+        Ok(oidc_discovery.issuer)
     }
 
     async fn configure_app_identity(&self, name: &str) -> Result<ProviderConfig> {
@@ -120,6 +179,7 @@ impl IdentityProvider for Provider {
 
         // Create new config with service account name
         let mut config = self.config.clone();
+        config.default_namespace = Some(client.default_namespace().to_string());
         config.service_account_name = Some(sa_name);
 
         Ok(ProviderConfig::k8s(config))
@@ -171,7 +231,7 @@ impl IdentityProvider for Provider {
             .context("Service account name not configured")?;
         let namespace = self
             .config
-            .namespace
+            .default_namespace
             .as_ref()
             .context("Namespace not configured")?;
         Ok(format!("system:serviceaccount:{namespace}:{sa_name}"))

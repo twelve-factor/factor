@@ -111,7 +111,7 @@ $ TOKEN=$(cat DEFAULT.token) \
 ```
 
 You should see `X-Factor-Client-Id: DEFAULT` in the response from the server.
-Note that in this case we are generating an oidc token an validating it
+Note that in this case we are generating an oidc token and validating it
 locally.
 
 ## Governance and Code of Conduct
@@ -171,3 +171,16 @@ the environment. Identity data looks like:
 If a matching token is supplied, then the header `X-Factor-Client-Id` will be
 set to the value of the matching client id. To reject, requests that don't
 match, use the flag `--reject-unknown`
+
+`factor issuer`
+
+Prints out the issuer and subject for the application. If factor is already
+running it will dynamically print out the current issuer, otherwise loads the
+identity provider to determine the issuer.
+
+The output will be something like:
+
+```
+issuer=http://localhost:5000
+subject=local
+```
