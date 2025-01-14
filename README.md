@@ -172,15 +172,17 @@ If a matching token is supplied, then the header `X-Factor-Client-Id` will be
 set to the value of the matching client id. To reject, requests that don't
 match, use the flag `--reject-unknown`
 
-`factor issuer`
+`factor info`
 
-Prints out the issuer and subject for the application. If factor is already
-running it will dynamically print out the current issuer, otherwise loads the
-identity provider to determine the issuer.
+Prints out info for the current application. If factor is already running it
+will dynamically print out the current data, otherwise loads the identity
+provider to determine the values.
 
 The output will be something like:
 
 ```
-issuer=http://localhost:5000
-subject=local
+name=local
+url=http://localhost:5000
+iss=http://localhost:5000
+sub=local
 ```

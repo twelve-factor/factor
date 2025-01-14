@@ -7,7 +7,7 @@ use dotenvy::dotenv;
 use factor::{
     child, dirs, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -49,6 +49,8 @@ struct AppConfig {
     app: String,
     #[serde(default = "default_app_path")]
     path: String,
+    #[serde(default)]
+    url: String,
     id: Option<AppIdConfig>,
     ngrok: Option<NgrokConfig>,
 }
@@ -144,6 +146,10 @@ enum Commands {
         #[arg(long, default_value = ".")]
         path: String,
 
+        /// Url where app is available
+        #[arg(long, default_value = "")]
+        url: String,
+
         /// Identity provider to use
         #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(IdProvider::variants()))]
         id_provider: Option<String>,
@@ -202,8 +208,8 @@ enum Commands {
         #[arg(required = true)]
         command: Vec<String>,
     },
-    /// Print issuer and subject from identity token
-    Issuer,
+    /// Print info about the current factor app
+    Info,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -242,12 +248,14 @@ fn main() -> Result<(), anyhow::Error> {
             app,
             id_provider,
             path,
+            url,
             id_targets,
         } => {
             handle_create(
                 app,
                 id_provider.as_ref(),
                 path,
+                url,
                 id_targets,
                 &global_config,
                 &cli.config,
@@ -288,14 +296,22 @@ fn main() -> Result<(), anyhow::Error> {
                 &app_config,
             )?;
         }
-        Commands::Issuer => {
-            handle_issuer(&app_config)?;
+        Commands::Info => {
+            handle_info(&app_config)?;
         }
     }
     Ok(())
 }
 
-fn handle_issuer(app_config: &AppConfig) -> Result<(), anyhow::Error> {
+fn handle_info(app_config: &AppConfig) -> Result<(), anyhow::Error> {
+    let name = &app_config.app;
+    let url = if let Ok(url) = dirs::get_stored_url() {
+        url
+    } else {
+        info!("Could not get stored url, falling back to default");
+        "http://localhost:5000".to_string()
+    };
+
     // Get the provider from app config
     let id_config = app_config
         .id
@@ -307,21 +323,25 @@ fn handle_issuer(app_config: &AppConfig) -> Result<(), anyhow::Error> {
     let rt = Runtime::new()?;
 
     // Get issuer from stored value, or fallback to getting it from a token
-    let issuer = if let Ok(iss) = identity::get_stored_issuer() {
+    let issuer = if let Ok(iss) = dirs::get_stored_iss() {
         iss
     } else {
         info!("Could not get stored issuer, falling back to provider");
-        rt.block_on(provider.get_iss())?
+        match rt.block_on(provider.get_iss()) {
+            Ok(iss) => iss,
+            Err(_) => url.clone(),
+        }
     };
 
-    // Get subject directly
     let subject = rt.block_on(provider.get_sub())?;
 
     // Print in key=value format
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
-    writeln!(handle, "issuer={issuer}")?;
-    writeln!(handle, "subject={subject}")?;
+    writeln!(handle, "name={name}")?;
+    writeln!(handle, "url={url}")?;
+    writeln!(handle, "iss={issuer}")?;
+    writeln!(handle, "sub={subject}")?;
 
     Ok(())
 }
@@ -330,6 +350,7 @@ fn handle_create(
     app: &String,
     id_provider: Option<&String>,
     path: &String,
+    url: &String,
     id_targets: &[(String, String)],
     global_config: &GlobalConfig,
     config_path: &String,
@@ -381,6 +402,7 @@ fn handle_create(
     let app_config = AppConfig {
         app: app.to_string(),
         path: path.to_string(),
+        url: url.to_string(),
         ngrok: global_config.ngrok.clone(),
         id: Some(AppIdConfig {
             name: provider_name.to_string(),
@@ -521,7 +543,7 @@ fn setup_env_watcher() -> Result<(watch::Sender<bool>, watch::Receiver<bool>), a
         }
     })?;
     if let Err(e) = fswatcher.watch(Path::new(".env"), RecursiveMode::NonRecursive) {
-        error!("Error watching .env: {e}");
+        warn!("Error watching .env: {e}");
     } else {
         // forget the watcher so it continues to function
         std::mem::forget(fswatcher);
@@ -544,12 +566,20 @@ fn handle_run(
 
     let runtime: Arc<Runtime> = Runtime::new()?.into();
     let ngrok_url = maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
-    if let Some(url) = ngrok_url {
+    if let Some(url) = ngrok_url.as_ref() {
         env::set_var("NGROK_URL", url);
+    }
+    let url = if !app_config.url.is_empty() {
+        app_config.url.clone()
+    } else if let Some(ngrok_url) = ngrok_url {
+        ngrok_url
+    } else {
+        format!("http://localhost:{port}")
     };
 
-    let (file_tx, mut file_rx) = setup_env_watcher()?;
+    let (_file_tx, mut file_rx) = setup_env_watcher()?;
     runtime.block_on(async {
+        dirs::write_url(url).await?;
         let mut should_exit = false;
         while !should_exit {
             let mut server = factor::server::Server::new_from_runtime(runtime.clone());
@@ -565,7 +595,10 @@ fn handle_run(
 
             server.run();
             trace!("Waiting for changes");
-            wait_for_signals(&mut server, &file_tx, &mut file_rx, &mut should_exit).await?;
+            wait_for_signals(&mut server, &mut file_rx, &mut should_exit).await?;
+        }
+        if let Err(e) = dirs::delete_url().await {
+            warn!("Failed to delete url: {}", e);
         }
         Ok(())
     })
@@ -574,7 +607,6 @@ fn handle_run(
 #[cfg(unix)]
 async fn wait_for_signals(
     server: &mut factor::server::Server,
-    file_tx: &tokio::sync::watch::Sender<bool>,
     file_rx: &mut tokio::sync::watch::Receiver<bool>,
     should_exit: &mut bool,
 ) -> Result<(), anyhow::Error> {
@@ -646,7 +678,6 @@ async fn wait_for_signals(
             sleep(Duration::from_millis(300)).await;
             info!("File change detected. Restarting services...");
             server.shutdown().await;
-            file_tx.send(false)?;
             info!("All services shut down. Restarting...");
         }
     };
@@ -657,7 +688,6 @@ async fn wait_for_signals(
 #[cfg(not(unix))]
 async fn wait_for_signals(
     server: &mut factor::server::Server,
-    file_tx: &tokio::sync::watch::Sender<bool>,
     file_rx: &mut tokio::sync::watch::Receiver<bool>,
     should_exit: &mut bool,
 ) -> Result<(), anyhow::Error> {
@@ -682,7 +712,6 @@ async fn wait_for_signals(
             sleep(Duration::from_millis(300)).await;
             info!("File change detected. Restarting services...");
             server.shutdown().await;
-            file_tx.send(false)?;
             info!("All services shut down. Restarting...");
         }
     };
