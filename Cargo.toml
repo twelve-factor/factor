@@ -32,7 +32,7 @@ pingora-http = "0.4.0"
 pingora-proxy = "0.4.0"
 rand = "0.8.5"
 regex = "1.11"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", default-features = false}
 rsa = "0.9.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -48,6 +48,12 @@ futures = "0.3.31"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.169"
+
+[target.x86_64-unknown-linux-musl.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
+[features]
+default = ["reqwest/native-tls", "reqwest/blocking", "reqwest/json"]
 
 [dev-dependencies]
 xshell = "0.2.7"
