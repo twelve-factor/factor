@@ -14,13 +14,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    env,
+    dirs,
     identity::{IdentityProvider, ProviderConfig},
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    pub iss: String,
     pub secret: String,
     pub sub: Option<String>,
 }
@@ -106,7 +105,8 @@ impl Provider {
     ///   would indicate internal key corruption)
     /// - The PEM-encoded key cannot be converted to JWT format
     pub fn new(config: Config) -> Result<Self> {
-        let private_key = generate_rsa_key_from_secret(&config.secret)?;
+        let private_key = generate_rsa_key_from_secret(&config.secret)
+            .map_err(|e| anyhow!("Invalid secret: {}", e))?;
         let private_key_pem = private_key.to_pkcs1_pem(LineEnding::CR)?.to_string();
         let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())?;
         let public_key = private_key.to_public_key();
@@ -133,8 +133,7 @@ struct Claims {
 #[async_trait]
 impl IdentityProvider for Provider {
     async fn get_iss(&self) -> Result<String> {
-        // if iss is still an env var, expand it now
-        env::expand(&self.config.iss)
+        dirs::get_stored_url()
     }
     async fn get_jwks(&self) -> Result<Option<String>> {
         let json = serde_json::to_string_pretty(&self.jwks)?;
@@ -156,11 +155,8 @@ impl IdentityProvider for Provider {
     async fn get_token(&self, audience: &str) -> Result<String> {
         let sub = self.config.sub.as_ref().context("Sub not configured")?;
 
-        // if iss is still an env var, expand it now
-        let iss = env::expand(&self.config.iss)?;
-
         let claims = Claims {
-            iss,
+            iss: self.get_iss().await?,
             sub: sub.to_string(),
             aud: audience.to_string(),
             exp: (SystemTime::now() + std::time::Duration::from_secs(1800)) // Expiration time (30 minutes from now)

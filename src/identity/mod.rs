@@ -9,11 +9,9 @@ use log::{error, info, trace, warn};
 pub use providers::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::{fs::write, sync::watch, time::interval};
+use tokio::{sync::watch, time::interval};
 
 use super::{dirs, env, server::Service};
-
-const ISSUER_FILENAME: &str = "issuer";
 
 macro_rules! identity_providers {
     ($($variant:ident),*) => {
@@ -76,7 +74,6 @@ pub struct IdentitySyncService {
     path: PathBuf,
     audience: String,
     provider: Arc<dyn IdentityProvider + Send + Sync>,
-    issuer_path: PathBuf,
 }
 
 impl IdentitySyncService {
@@ -101,7 +98,6 @@ impl IdentitySyncService {
         let key = format!("{}_{}", target_id_safe, "IDENTITY");
         let filename = format!("{target_id}.token");
         let path = PathBuf::from(path).join(filename);
-        let issuer_path = dirs::get_data_dir()?.join(ISSUER_FILENAME);
 
         // make sure that we empty any existing old identity
         env::set_var_file(&key, "", &path)?;
@@ -110,15 +106,13 @@ impl IdentitySyncService {
             path,
             audience: audience.to_string(),
             provider,
-            issuer_path,
         };
         Ok(service)
     }
 
     async fn write_issuer(&self) -> Result<()> {
         let issuer = self.provider.get_iss().await?;
-        write(&self.issuer_path, issuer.as_bytes()).await?;
-        Ok(())
+        dirs::write_iss(issuer).await
     }
 }
 
@@ -142,8 +136,8 @@ impl Service for IdentitySyncService {
             tokio::select! {
                 _ = shutdown.changed() => {
                     // Clean up issuer file on shutdown
-                    if let Err(e) = std::fs::remove_file(&self.issuer_path) {
-                        warn!("Failed to remove issuer file: {}", e);
+                    if let Err(e) = dirs::delete_iss().await {
+                        error!("Failed to delete issuer file: {}", e);
                     }
                     break;
                 }
@@ -224,16 +218,4 @@ pub fn get_claims(jwt: &str) -> Result<Claims> {
     let claims: Claims = serde_json::from_slice(&payload)?;
 
     Ok(claims)
-}
-
-/// Get the stored issuer from the data directory
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Cannot access data directory
-/// - Issuer file doesn't exist or can't be read
-pub fn get_stored_issuer() -> Result<String> {
-    let issuer_path = dirs::get_data_dir()?.join(ISSUER_FILENAME);
-    std::fs::read_to_string(&issuer_path).map_err(|e| anyhow!("Failed to read issuer file: {}", e))
 }

@@ -9,6 +9,7 @@ use std::{
 };
 
 use anyhow::Result;
+use log::error;
 use notify::{Event, RecursiveMode, Watcher};
 use reqwest;
 use serde::de::DeserializeOwned;
@@ -51,7 +52,10 @@ where
 
     let string_value = var_with_on_change(key, string_callback)?;
 
-    let value = serde_json::from_str(&string_value).map_err(|_| VarError::NotPresent)?;
+    let value = serde_json::from_str(&string_value).map_err(|e| {
+        error!("Failed to parse JSON: {}", e);
+        VarError::NotPresent
+    })?;
     Ok(value)
 }
 
@@ -68,7 +72,10 @@ where
     T: DeserializeOwned + Send + Sync + 'static,
 {
     let string_value = var(key)?;
-    let value = serde_json::from_str(&string_value).map_err(|_| VarError::NotPresent)?;
+    let value = serde_json::from_str(&string_value).map_err(|e| {
+        error!("Failed to parse JSON: {}", e);
+        VarError::NotPresent
+    })?;
     Ok(value)
 }
 
