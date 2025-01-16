@@ -209,7 +209,11 @@ enum Commands {
         command: Vec<String>,
     },
     /// Print info about the current factor app
-    Info,
+    Info {
+        /// Output in JSON format
+        #[arg(long, short = 'j', default_value = "false")]
+        json: bool,
+    },
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -296,14 +300,14 @@ fn main() -> Result<(), anyhow::Error> {
                 &app_config,
             )?;
         }
-        Commands::Info => {
-            handle_info(&app_config)?;
+        Commands::Info { json } => {
+            handle_info(&app_config, *json)?;
         }
     }
     Ok(())
 }
 
-fn handle_info(app_config: &AppConfig) -> Result<(), anyhow::Error> {
+fn handle_info(app_config: &AppConfig, json: bool) -> Result<(), anyhow::Error> {
     let name = &app_config.app;
     let url = if let Ok(url) = dirs::get_stored_url() {
         url
@@ -338,10 +342,20 @@ fn handle_info(app_config: &AppConfig) -> Result<(), anyhow::Error> {
     // Print in key=value format
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
-    writeln!(handle, "name={name}")?;
-    writeln!(handle, "url={url}")?;
-    writeln!(handle, "iss={issuer}")?;
-    writeln!(handle, "sub={subject}")?;
+    if json {
+        let info = serde_json::json!({
+            "name": name,
+            "url": url,
+            "iss": issuer,
+            "sub": subject,
+        });
+        writeln!(handle, "{info}")?;
+    } else {
+        writeln!(handle, "name={name}")?;
+        writeln!(handle, "url={url}")?;
+        writeln!(handle, "iss={issuer}")?;
+        writeln!(handle, "sub={subject}")?;
+    }
 
     Ok(())
 }
