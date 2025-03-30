@@ -69,3 +69,7 @@ style = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 
 disallowed-macros = "deny"
+
+# workaround for pingora-core issue https://github.com/cloudflare/pingora/issues/568
+[patch.crates-io]
+sfv = { git = "https://github.com/undef1nd/sfv.git", tag = "v0.9.4" }
