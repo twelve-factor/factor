@@ -1,21 +1,51 @@
 use std::{
-    collections::HashMap, io::Write, net::TcpListener, path::Path, sync::Arc, time::Duration,
+    borrow::Cow, collections::HashMap, env, io::Write, net::TcpListener, path::Path, sync::Arc,
+    time::Duration,
 };
 
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use factor::{
-    child, dirs, env, identity, identity::IdProvider, ngrok, proxy, proxy::IncomingIdentity,
+    child, dirs,
+    identity::{self, IdProvider},
+    ngrok, proxy,
 };
 use log::{debug, info, trace, warn};
 use notify::{Event, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
+use shellexpand::LookupError;
 use tokio::{
+    self,
     runtime::Runtime,
     signal,
     sync::{oneshot, watch},
     time::sleep,
 };
+
+/// Expand environment variables in a string using the ${VAR} syntax
+///
+/// # Errors
+///
+/// Returns `anyhow::Error` if:
+///
+/// - The environment variable (`${key}`) doesn't exist
+/// - The input string has invalid syntax (e.g., unclosed `${` braces)
+pub fn expand(input: &str) -> Result<String> {
+    Ok(shellexpand::env_with_context(
+        input,
+        |key| -> Result<Option<String>, LookupError<env::VarError>> {
+            env::var(key)
+                .map(Some)
+                .map_err(|e| LookupError {
+                    var_name: key.to_string(),
+                    cause: e,
+                })
+                .or(Ok::<Option<String>, LookupError<env::VarError>>(None))
+        },
+    )
+    .map(Cow::into_owned)?)
+}
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct GlobalConfig {
@@ -85,18 +115,18 @@ fn load_global_config() -> Result<GlobalConfig, anyhow::Error> {
 fn load_app_config(path: &str) -> Result<AppConfig, anyhow::Error> {
     match std::fs::read_to_string(path) {
         Ok(contents) => {
-            let expanded_contents = env::expand(&contents)?;
+            let expanded_contents = expand(&contents)?;
             Ok(toml::from_str(&expanded_contents)?)
         }
         Err(_) => Ok(AppConfig::default()),
     }
 }
 
-fn load_incoming_identity(path: &str) -> Result<IncomingIdentity, anyhow::Error> {
+fn load_incoming_identity(path: &str) -> Result<proxy::IncomingIdentity, anyhow::Error> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read incoming identity file at {}: {}", path, e))?;
     toml::from_str(&contents).or_else(|e| {
-        warn!("Failed to parse {path} as TOML, trying JSON: {e}");
+        debug!("Failed to parse {path} as TOML, trying JSON: {e}");
         serde_json::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Failed to parse {} as TOML or JSON: {}", path, e))
     })
@@ -167,7 +197,7 @@ enum Commands {
     /// Proxy from `PORT` to `CHILD_PORT`
     Proxy {
         /// Reject requests from unknown clients
-        #[arg(long, default_value = "false")]
+        #[arg(long, env = "REJECT_UNKNOWN", default_value = "false", value_parser = clap::builder::BoolishValueParser::new())]
         reject_unknown: bool,
 
         /// Use IPv6 instead of IPv4
@@ -201,7 +231,7 @@ enum Commands {
         incoming_identity: Option<String>,
 
         /// Listening port for proxy
-        #[arg(long, env = "PORT", value_parser = clap::value_parser!(u16), default_value = "5000")]
+        #[arg(long, value_parser = clap::value_parser!(u16), default_value = "5000")]
         port: u16,
 
         /// Command to execute
@@ -742,7 +772,24 @@ fn add_services(
     ipv6: bool,
     command: &[String],
 ) -> Result<(), anyhow::Error> {
+    // Load .env file variables into the environment
     dotenv().ok();
+
+    // Check environment for overrides (this will include variables from .env)
+    let reject_unknown = match env::var("REJECT_UNKNOWN") {
+        Ok(val) => {
+            let val = val.to_lowercase();
+            matches!(val.as_str(), "true" | "t" | "yes" | "y" | "1" | "on")
+        }
+        Err(_) => reject_unknown, // Fall back to command-line value
+    };
+
+    // Get PORT from environment if set
+    let port = match env::var("PORT") {
+        Ok(val) => val.parse::<u16>().unwrap_or(port), // Parse or fall back to command-line
+        Err(_) => port,                                // Use command-line value
+    };
+
     let incoming_identity = get_incoming_identity(incoming_identity)?;
 
     let id = app_config
@@ -766,7 +813,7 @@ fn add_services(
         .unwrap()
         .port();
 
-    debug!("Proxying port {port} to {child_port}");
+    debug!("Proxying port {port} to {child_port} (reject_unknown: {reject_unknown})");
     let proxy_service = proxy::get_proxy_service(
         port,
         child_port,
@@ -798,21 +845,29 @@ fn add_services(
 
 fn get_incoming_identity(
     incoming_identity_path: Option<&String>,
-) -> Result<IncomingIdentity, anyhow::Error> {
+) -> Result<proxy::IncomingIdentity, anyhow::Error> {
     debug!("incoming identity path: {incoming_identity_path:?}");
-    let incoming_identity = match incoming_identity_path {
+
+    // First try loading from file if specified
+    let mut incoming_identity = match incoming_identity_path {
         Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,
-        None => IncomingIdentity::default(),
+        None => proxy::IncomingIdentity::default(),
     };
-    let incoming_identity = if incoming_identity.is_empty() {
-        env::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
-            warn!("No INCOMING_IDENTITY specified, using default. Error: {e:?}");
+
+    // If empty, check INCOMING_IDENTITY env var
+    if incoming_identity.is_empty() {
+        incoming_identity = proxy::credentials::var_json("INCOMING_IDENTITY").unwrap_or_else(|e| {
+            debug!("No INCOMING_IDENTITY specified, checking for *_CLIENT_CREDS. Error: {e:?}");
             HashMap::default()
-        })
+        });
     } else {
         env::set_var("INCOMING_IDENTITY", toml::to_string(&incoming_identity)?);
-        incoming_identity
-    };
+    }
+
+    // Load additional credentials from environment variables
+    if incoming_identity.is_empty() {
+        incoming_identity = proxy::credentials::load_from_env();
+    }
 
     Ok(incoming_identity)
 }

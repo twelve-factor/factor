@@ -1,6 +1,6 @@
 [package]
 name = "factor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Run twelve-factor apps locally"
 repository = "https://github.com/twelve-factor/factor"
 keywords = ["container", "kubernetes", "platform", "twelve-factor"]

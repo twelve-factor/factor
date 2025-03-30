@@ -1,3 +1,5 @@
+use std::env;
+
 use async_trait::async_trait;
 use log::{error, trace, warn};
 use tokio::{
@@ -6,7 +8,7 @@ use tokio::{
     time::{sleep, Duration},
 };
 
-use super::{env, server::Service};
+use super::server::Service;
 
 pub struct ChildService {
     command: Vec<String>,
