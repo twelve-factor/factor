@@ -602,6 +602,12 @@ fn handle_run(
     }
     trace!("Running run command");
 
+    dotenv().ok();
+    let port = match env::var("PORT") {
+        Ok(val) => val.parse::<u16>().unwrap_or(port),
+        Err(_) => port,
+    };
+
     let runtime: Arc<Runtime> = Runtime::new()?.into();
     let ngrok_url = maybe_run_background_ngrok(&runtime, app_config, port, ipv6);
     if let Some(url) = ngrok_url.as_ref() {
@@ -620,11 +626,6 @@ fn handle_run(
                     matches!(val.as_str(), "true" | "t" | "yes" | "y" | "1" | "on")
                 }
                 Err(_) => reject_unknown,
-            };
-
-            let port = match env::var("PORT") {
-                Ok(val) => val.parse::<u16>().unwrap_or(port),
-                Err(_) => port,
             };
 
             let url = if !app_config.url.is_empty() {
