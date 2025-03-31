@@ -189,13 +189,13 @@ impl Service for IdentitySyncService {
     async fn start(&mut self, mut shutdown: watch::Receiver<bool>) {
         // Write issuer at startup
         if let Err(e) = self.write_issuer().await {
-            warn!("Failed to write issuer: {}", e);
+            warn!("Failed to write issuer: {e}");
         }
 
         if let Err(e) = self.provider.ensure_audience(&self.audience).await {
             warn!(
-                "Failed to create or verify API for audience {}: {}",
-                self.audience, e
+                "Failed to create or verify API for audience {audience}: {e}",
+                audience = self.audience, e = e
             );
         }
 
@@ -205,7 +205,7 @@ impl Service for IdentitySyncService {
                 _ = shutdown.changed() => {
                     // Clean up issuer file on shutdown
                     if let Err(e) = dirs::delete_iss().await {
-                        error!("Failed to delete issuer file: {}", e);
+                        error!("Failed to delete issuer file: {e}");
                     }
                     break;
                 }
@@ -214,7 +214,7 @@ impl Service for IdentitySyncService {
                         Ok(token) => {
                             match write_file_idempotent(&self.path, &token) {
                                 Ok(()) => {
-                                    trace!("Successfully wrote token for audience {} to file", self.audience);
+                                    trace!("Successfully wrote token for audience {audience} to file", audience = self.audience);
                                     match get_claims(&token) {
                                         Ok(claims) => {
                                             match serde_json::to_string_pretty(&claims) {
@@ -224,16 +224,17 @@ impl Service for IdentitySyncService {
                                         }
                                         Err(e) => {
                                             error!("Failed to get claims for token: {e}");
-                                            info!("Token prefix: {}", &token[..6]);
+                                            info!("Token prefix: {token_prefix}", token_prefix = &token[..6]);
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    error!("Failed to write token to file for audience {}: {}", self.audience, e);
+                                    error!("Failed to write token to file for audience {audience}: {e}", 
+                                           audience = self.audience, e = e);
                                 }
                             }
                         }
-                        Err(e) => error!("Failed to get token for audience {}: {}", self.audience, e),
+                        Err(e) => error!("Failed to get token for audience {audience}: {e}", audience = self.audience, e = e),
                     }
                 }
             }

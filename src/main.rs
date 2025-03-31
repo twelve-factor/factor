@@ -562,11 +562,7 @@ fn maybe_run_background_ngrok(
             });
 
             let url = runtime.block_on(async move {
-                if let Ok(url) = rx.await {
-                    Some(url)
-                } else {
-                    None
-                }
+                (rx.await).ok()
             });
 
             return url;
@@ -642,7 +638,7 @@ fn handle_run(
             wait_for_signals(&mut server, &mut file_rx, &mut should_exit).await?;
         }
         if let Err(e) = dirs::delete_url().await {
-            warn!("Failed to delete url: {}", e);
+            warn!("Failed to delete url: {e}");
         }
         Ok(())
     })
