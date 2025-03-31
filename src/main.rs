@@ -609,20 +609,36 @@ fn handle_run(
     if let Some(url) = ngrok_url.as_ref() {
         env::set_var("NGROK_URL", url);
     }
-    let url = if !app_config.url.is_empty() {
-        app_config.url.clone()
-    } else if let Some(ngrok_url) = ngrok_url {
-        ngrok_url
-    } else {
-        format!("http://localhost:{port}")
-    };
-
     let (_file_tx, mut file_rx) = setup_env_watcher()?;
     runtime.block_on(async {
-        dirs::write_url(url).await?;
         let mut should_exit = false;
         while !should_exit {
             let mut server = factor::server::Server::new_from_runtime(runtime.clone());
+            dotenv().ok();
+
+            let reject_unknown = match env::var("REJECT_UNKNOWN") {
+                Ok(val) => {
+                    let val = val.to_lowercase();
+                    matches!(val.as_str(), "true" | "t" | "yes" | "y" | "1" | "on")
+                }
+                Err(_) => reject_unknown,
+            };
+
+            let port = match env::var("PORT") {
+                Ok(val) => val.parse::<u16>().unwrap_or(port),
+                Err(_) => port,
+            };
+
+            let url = if !app_config.url.is_empty() {
+                app_config.url.clone()
+            } else if let Some(url) = ngrok_url.as_ref() {
+                url.clone()
+            } else {
+                format!("http://localhost:{port}")
+            };
+
+            dirs::write_url(url.clone()).await?;
+
             add_services(
                 &mut server,
                 app_config,
@@ -768,24 +784,6 @@ fn add_services(
     ipv6: bool,
     command: &[String],
 ) -> Result<(), anyhow::Error> {
-    // Load .env file variables into the environment
-    dotenv().ok();
-
-    // Check environment for overrides (this will include variables from .env)
-    let reject_unknown = match env::var("REJECT_UNKNOWN") {
-        Ok(val) => {
-            let val = val.to_lowercase();
-            matches!(val.as_str(), "true" | "t" | "yes" | "y" | "1" | "on")
-        }
-        Err(_) => reject_unknown, // Fall back to command-line value
-    };
-
-    // Get PORT from environment if set
-    let port = match env::var("PORT") {
-        Ok(val) => val.parse::<u16>().unwrap_or(port), // Parse or fall back to command-line
-        Err(_) => port,                                // Use command-line value
-    };
-
     let incoming_identity = get_incoming_identity(incoming_identity)?;
 
     let id = app_config
