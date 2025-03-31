@@ -561,9 +561,7 @@ fn maybe_run_background_ngrok(
                 server.wait_for_exit();
             });
 
-            let url = runtime.block_on(async move {
-                (rx.await).ok()
-            });
+            let url = runtime.block_on(async move { (rx.await).ok() });
 
             return url;
         }

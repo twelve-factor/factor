@@ -195,7 +195,7 @@ impl Service for IdentitySyncService {
         if let Err(e) = self.provider.ensure_audience(&self.audience).await {
             warn!(
                 "Failed to create or verify API for audience {audience}: {e}",
-                audience = self.audience, e = e
+                audience = self.audience
             );
         }
 
@@ -214,7 +214,7 @@ impl Service for IdentitySyncService {
                         Ok(token) => {
                             match write_file_idempotent(&self.path, &token) {
                                 Ok(()) => {
-                                    trace!("Successfully wrote token for audience {audience} to file", audience = self.audience);
+                                    trace!("Successfully wrote token for audience {audience} to file", audience=self.audience);
                                     match get_claims(&token) {
                                         Ok(claims) => {
                                             match serde_json::to_string_pretty(&claims) {
@@ -228,9 +228,7 @@ impl Service for IdentitySyncService {
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    error!("Failed to write token to file for audience {audience}: {e}", 
-                                           audience = self.audience, e = e);
+                                Err(e) => {error!("Failed to write token to file for audience {audience}: {e}", audience=self.audience);
                                 }
                             }
                         }
