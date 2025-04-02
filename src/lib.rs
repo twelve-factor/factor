@@ -1,6 +1,5 @@
 pub mod child;
 pub mod dirs;
-pub mod env;
 pub mod identity;
 pub mod ngrok;
 pub mod proxy;

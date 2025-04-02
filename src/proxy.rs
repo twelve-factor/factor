@@ -9,7 +9,7 @@ use biscuit::{jwk::JWKSet, Empty};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use log::{info, trace, warn};
 use pingora::{server::configuration::ServerConf, services::listening::Service};
-use pingora_core::{upstreams::peer::HttpPeer, Result};
+use pingora_core::{upstreams::peer::HttpPeer, Result as PingoraResult};
 use pingora_http::{RequestHeader, ResponseHeader};
 use pingora_proxy::{HttpProxy, ProxyHttp, Session};
 use regex::Regex;
@@ -19,7 +19,126 @@ use tokio::sync::Mutex;
 
 use super::identity;
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+pub mod credentials {
+    use std::{collections::HashMap, env};
+
+    use anyhow::Result;
+    use log::{debug, warn};
+    use serde::Deserialize;
+
+    use super::IdentityValidator;
+
+    #[derive(Debug, Deserialize)]
+    pub struct ClientCredentials {
+        #[serde(rename = "type")]
+        cred_type: String,
+        #[serde(default)]
+        client_id: String,
+        #[serde(default)]
+        data: IdentityValidator,
+    }
+
+    /// Get a JSON-encoded environment variable and deserialize it
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The environment variable doesn't exist
+    /// - The contents can't be parsed as JSON
+    /// - The value can't be converted to type `T`
+    pub fn var_json<T: serde::de::DeserializeOwned>(key: &str) -> Result<T> {
+        let string_value = env::var(key)?;
+        serde_json::from_str(&string_value).map_err(|e| {
+            anyhow::anyhow!("Failed to parse JSON from environment variable {key}: {e}")
+        })
+    }
+
+    fn load_incoming_identity(path: &str) -> anyhow::Result<HashMap<String, IdentityValidator>> {
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            anyhow::anyhow!("Failed to read incoming identity file at `{path}`: {e}")
+        })?;
+        toml::from_str(&contents).or_else(|e| {
+            warn!("Failed to parse `{path}` as TOML, trying JSON: {e}");
+            serde_json::from_str(&contents)
+                .map_err(|e| anyhow::anyhow!("Failed to parse `{path}` as TOML or JSON: {e}"))
+        })
+    }
+
+    /// Get the incoming identity configuration from various sources
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The identity file cannot be read or parsed
+    /// - The `INCOMING_IDENTITY` environment variable contains invalid JSON
+    /// - The identity configuration cannot be serialized back to `TOML`
+    pub fn get_incoming_identity(
+        incoming_identity_path: Option<&String>,
+    ) -> anyhow::Result<HashMap<String, IdentityValidator>> {
+        debug!("incoming identity path: {incoming_identity_path:?}");
+
+        // Load from file if specified
+        let mut incoming_identity = match incoming_identity_path {
+            Some(incoming_identity_path) => load_incoming_identity(incoming_identity_path)?,
+            None => HashMap::default(),
+        };
+
+        // Load from INCOMING_IDENTITY env var and merge
+        if let Ok(env_identity) =
+            var_json::<HashMap<String, IdentityValidator>>("INCOMING_IDENTITY")
+        {
+            for (key, value) in env_identity {
+                incoming_identity.insert(key, value);
+            }
+        }
+
+        // Store back the merged identity
+        if !incoming_identity.is_empty() {
+            env::set_var("INCOMING_IDENTITY", toml::to_string(&incoming_identity)?);
+        }
+
+        // Load and merge additional credentials from environment variables
+        let env_creds = load_from_env();
+        for (key, value) in env_creds {
+            incoming_identity.insert(key, value);
+        }
+
+        Ok(incoming_identity)
+    }
+
+    /// Load identity configuration from environment variables
+    ///
+    /// # Returns
+    ///
+    /// Returns a `HashMap` mapping client IDs to their identity validators
+    #[must_use]
+    pub fn load_from_env() -> HashMap<String, IdentityValidator> {
+        let mut incoming_identity = HashMap::new();
+        for (key, _) in env::vars() {
+            if key.ends_with("_CREDS") {
+                let name = key.trim_end_matches("_CREDS");
+                if let Ok(creds) = var_json::<ClientCredentials>(&key) {
+                    let client_id = if creds.client_id.is_empty() {
+                        name.to_string()
+                    } else {
+                        creds.client_id.clone()
+                    };
+                    if creds.cred_type == "oidc" {
+                        incoming_identity.insert(client_id, creds.data);
+                    }
+                }
+            }
+        }
+        if !incoming_identity.is_empty() {
+            if let Ok(toml) = toml::to_string(&incoming_identity) {
+                env::set_var("INCOMING_IDENTITY", toml);
+            }
+        }
+        incoming_identity
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct IdentityValidator {
     iss: Option<String>,
     sub: Option<String>,
@@ -174,7 +293,11 @@ impl ProxyHttp for AuthProxy {
     type CTX = ();
     fn new_ctx(&self) -> Self::CTX {}
 
-    async fn request_filter(&self, session: &mut Session, _ctx: &mut Self::CTX) -> Result<bool> {
+    async fn request_filter(
+        &self,
+        session: &mut Session,
+        _ctx: &mut Self::CTX,
+    ) -> PingoraResult<bool> {
         if session.req_header().uri.path().starts_with("/.well-known/") {
             if let Ok(Some(jwks)) = self.provider.get_jwks().await {
                 if let Err(e) = self.handle_well_known(session, jwks).await {
@@ -185,12 +308,12 @@ impl ProxyHttp for AuthProxy {
                 return Ok(true); // Indicate that the request has been handled
             }
         }
-        session.req_header_mut().remove_header("X-Factor-Client-Id");
+        session.req_header_mut().remove_header("X-Client-Id");
         match self.validate_token(session.req_header()).await {
             Ok(Some(client_id)) => {
                 session
                     .req_header_mut()
-                    .append_header("X-Factor-Client-Id", client_id)?;
+                    .append_header("X-Client-Id", client_id)?;
                 return Ok(false);
             }
             Ok(None) => {
@@ -212,7 +335,7 @@ impl ProxyHttp for AuthProxy {
         &self,
         _session: &mut Session,
         _ctx: &mut Self::CTX,
-    ) -> Result<Box<HttpPeer>> {
+    ) -> PingoraResult<Box<HttpPeer>> {
         // TODO: wrap pingora_load_balancer so we can put in both ipv4 and ipv6 upstreams?
         let addr = if self.ipv6 {
             SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), self.port)

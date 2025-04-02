@@ -11,7 +11,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time::interval};
 
-use super::{dirs, env, server::Service};
+use super::{dirs, server::Service};
 
 macro_rules! identity_providers {
     ($($variant:ident),*) => {
@@ -69,6 +69,70 @@ pub trait IdentityProvider: Send + Sync {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct TokenCredentials {
+    #[serde(rename = "type")]
+    cred_type: String,
+    data: TokenData,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenData {
+    token: String,
+}
+
+impl TokenCredentials {
+    fn new(token_path: impl AsRef<std::path::Path>) -> Self {
+        Self {
+            cred_type: "oidc".to_string(),
+            data: TokenData {
+                token: format!("file://{}", token_path.as_ref().display()),
+            },
+        }
+    }
+}
+
+/// Write a value to a file idempotently using a temporary file
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The parent directory doesn't exist
+/// - Cannot create a temporary file
+/// - Cannot write to the temporary file
+/// - Cannot rename the temporary file
+fn write_file_idempotent(path: impl AsRef<std::path::Path>, contents: &str) -> Result<()> {
+    let path = path.as_ref();
+
+    // Ensure parent directory exists and get canonical path
+    let canonicalized_parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("Path has no parent directory"))?
+        .canonicalize()
+        .map_err(|e| anyhow!("Failed to get canonical parent path: {}", e))?;
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("Path has no filename"))?;
+
+    let canonical_path = canonicalized_parent.join(file_name);
+
+    // Create temporary file in same directory
+    let temp_file = tempfile::NamedTempFile::new_in(&canonicalized_parent)
+        .map_err(|e| anyhow!("Failed to create temporary file: {}", e))?;
+
+    // Write contents to temporary file
+    std::fs::write(temp_file.path(), contents)
+        .map_err(|e| anyhow!("Failed to write to temporary file: {}", e))?;
+
+    // Atomically rename temporary file to target
+    temp_file
+        .persist(&canonical_path)
+        .map_err(|e| anyhow!("Failed to rename temporary file: {}", e))?;
+
+    Ok(())
+}
+
 pub struct IdentitySyncService {
     pub key: String,
     path: PathBuf,
@@ -82,8 +146,7 @@ impl IdentitySyncService {
     /// - Returns [`anyhow::Error`] if:
     ///     - `path` is the root or parent directory doesn't exist
     ///     - permission issues
-    ///
-    /// See [`env::set_var_file`] for more error conditions
+    ///     - cannot create or write to temporary files
     pub fn new(
         path: &str,
         target_id: &str,
@@ -95,12 +158,17 @@ impl IdentitySyncService {
             .replace_all(target_id, "_")
             .to_string()
             .to_uppercase();
-        let key = format!("{}_{}", target_id_safe, "IDENTITY");
+        let key = format!("{}_{}", target_id_safe, "CREDS");
         let filename = format!("{target_id}.token");
         let path = PathBuf::from(path).join(filename);
 
-        // make sure that we empty any existing old identity
-        env::set_var_file(&key, "", &path)?;
+        // Write initial empty token file
+        write_file_idempotent(&path, "")?;
+
+        // Set credentials environment variable
+        let creds = TokenCredentials::new(&path);
+        std::env::set_var(&key, serde_json::to_string(&creds)?);
+
         let service = IdentitySyncService {
             key: key.clone(),
             path,
@@ -121,13 +189,13 @@ impl Service for IdentitySyncService {
     async fn start(&mut self, mut shutdown: watch::Receiver<bool>) {
         // Write issuer at startup
         if let Err(e) = self.write_issuer().await {
-            warn!("Failed to write issuer: {}", e);
+            warn!("Failed to write issuer: {e}");
         }
 
         if let Err(e) = self.provider.ensure_audience(&self.audience).await {
             warn!(
-                "Failed to create or verify API for audience {}: {}",
-                self.audience, e
+                "Failed to create or verify API for audience {audience}: {e}",
+                audience = self.audience
             );
         }
 
@@ -137,16 +205,16 @@ impl Service for IdentitySyncService {
                 _ = shutdown.changed() => {
                     // Clean up issuer file on shutdown
                     if let Err(e) = dirs::delete_iss().await {
-                        error!("Failed to delete issuer file: {}", e);
+                        error!("Failed to delete issuer file: {e}");
                     }
                     break;
                 }
                 _ = period.tick() => {
                     match self.provider.get_token(&self.audience).await {
                         Ok(token) => {
-                            match env::set_var_file(&self.key, &token, &self.path) {
+                            match write_file_idempotent(&self.path, &token) {
                                 Ok(()) => {
-                                    trace!("Successfully wrote token for audience {} to file", self.audience);
+                                    trace!("Successfully wrote token for audience {audience} to file", audience=self.audience);
                                     match get_claims(&token) {
                                         Ok(claims) => {
                                             match serde_json::to_string_pretty(&claims) {
@@ -156,16 +224,15 @@ impl Service for IdentitySyncService {
                                         }
                                         Err(e) => {
                                             error!("Failed to get claims for token: {e}");
-                                            info!("Token prefix: {}", &token[..6]);
+                                            info!("Token prefix: {token_prefix}", token_prefix = &token[..6]);
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    error!("Failed to write token to file for audience {}: {}", self.audience, e);
+                                Err(e) => {error!("Failed to write token to file for audience {audience}: {e}", audience=self.audience);
                                 }
                             }
                         }
-                        Err(e) => error!("Failed to get token for audience {}: {}", self.audience, e),
+                        Err(e) => error!("Failed to get token for audience {audience}: {e}", audience = self.audience, e = e),
                     }
                 }
             }

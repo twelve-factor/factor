@@ -127,6 +127,7 @@ struct Claims {
     iss: String,
     sub: String,
     aud: String,
+    iat: u64,
     exp: u64,
 }
 
@@ -155,13 +156,13 @@ impl IdentityProvider for Provider {
     async fn get_token(&self, audience: &str) -> Result<String> {
         let sub = self.config.sub.as_ref().context("Sub not configured")?;
 
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let claims = Claims {
             iss: self.get_iss().await?,
             sub: sub.to_string(),
             aud: audience.to_string(),
-            exp: (SystemTime::now() + std::time::Duration::from_secs(1800)) // Expiration time (30 minutes from now)
-                .duration_since(UNIX_EPOCH)?
-                .as_secs(),
+            iat: now,
+            exp: now + 1800, // Expiration time (30 minutes from now)
         };
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());

@@ -106,13 +106,52 @@ In another terminal window, load the file and make a request passing in the
 token:
 
 ```shell
-$ TOKEN=$(cat DEFAULT.token) \
+$ TOKEN=$(cat DEFAULT.token); \
   curl -v -H "Authorization: Bearer $TOKEN" http://localhost:5000
 ```
 
-You should see `X-Factor-Client-Id: DEFAULT` in the response from the server.
+You should see `X-Client-Id: DEFAULT` in the response from the server.
 Note that in this case we are generating an oidc token and validating it
 locally.
+
+## Architecture and Configuration
+
+Factor CLI acts as a platform that provides services to your application in the same way a cloud platform would. This platform is configured through environment variables and provides services through environment variables and headers.
+
+### Client-Side Identity
+
+On the client side, Factor acts as an identity provider that generates tokens for your application to use when calling other services:
+
+**Configuration (what your application provides to Factor):**
+
+- `*_AUDIENCE` environment variables - Define the audiences for which Factor should generate tokens
+  - Example: `DEFAULT_AUDIENCE=api.example.com` will generate a token for the audience "api.example.com"
+
+**Services (what Factor provides to your application):**
+
+- `*_CREDS` environment variables - Contain credentials that your application can use to authenticate to other services
+  - Example: `DEFAULT_CREDS='{"type":"oidc","data":{"token":"file:///path/to/DEFAULT.token"}}'`
+- Token files - Written to disk and referenced by the `*_CREDS` variables
+  - These files are automatically updated by Factor (typically every 15 minutes)
+  - Applications should monitor and reload these files when they change to maintain valid credentials
+
+### Server-Side Identity
+
+On the server side, Factor acts as an identity-aware proxy that validates incoming tokens and passes identity information to your application:
+
+**Configuration (what your application provides to Factor):**
+
+- `*_CLIENT_CREDS` environment variables - Define the client identities that are allowed to access your application
+  - Example: `SERVICE_A_CLIENT_CREDS='{"type":"oidc","data":{"iss":"https://auth\\.example\\.com","sub":"service-.*","aud":"api"}}'`
+- `REJECT_UNKNOWN` environment variable - When set to "true", rejects requests from unidentified clients
+  - When not set or "false", requests without valid tokens will pass through without the `X-Client-Id` header
+
+**Services (what Factor provides to your application):**
+
+- `X-Client-Id` header - Contains the client ID of the authenticated caller, validated from their token
+  - Example: When a request comes in with a valid token, your application receives `X-Client-Id: SERVICE_A`
+
+This separation of concerns allows your application to focus on its business logic while Factor handles the complexities of identity management, token validation, and proxy configuration.
 
 ## Governance and Code of Conduct
 
@@ -135,7 +174,25 @@ Loads an `.env` file if available, starts the given subcommand and proxies
 requests to the subcommand. Validates incoming bearer tokens using the same
 mechanism as `proxy` and syncs ids using the same mechanism as `id`. Audiences
 can also be specified by setting `CLIENT_ID_AUDIENCE=<audience>` in environment
-variables.
+variables. Token files will be created in the current working directory.
+
+The application will receive credentials through environment variables using the `*_CREDS` suffix format:
+
+```json
+{
+  "type": "oidc",
+  "data": {
+    "token": "file:///path/to/token/file"
+  }
+}
+```
+
+For example:
+
+```shell
+# The environment variable name before _CREDS becomes the credential name
+export SERVICE_CREDS='{"type":"oidc","data":{"token":"file:///tmp/service.token"}}'
+```
 
 Additionally, if an ngrok key is specified in the app config, it will start an
 ngrok tunnel and forward requests to the application. The ngrok url is
@@ -152,9 +209,11 @@ by specifying `--path` on the command line or changing the path value in
 
 Listens on `--port` and proxies requests to `--child_port`. Validates incoming
 bearer tokens based on the flag `--incoming-identity` or `INCOMING_IDENTITY` in
-the environment. Identity data looks like:
+the environment. Identity data can be provided in two ways:
 
-```
+1. As a JSON/TOML file specified by `--incoming-identity`:
+
+```json
 {
   "<client_id_a>": {
     "iss": "<issuer_regex>",
@@ -168,8 +227,29 @@ the environment. Identity data looks like:
 }
 ```
 
-If a matching token is supplied, then the header `X-Factor-Client-Id` will be
-set to the value of the matching client id. To reject, requests that don't
+2. Through environment variables using the `*_CLIENT_CREDS` format:
+
+```json
+{
+  "type": "oidc",
+  "client_id": "optional_override",
+  "data": {
+    "iss": "<issuer_regex>",
+    "sub": "<subject_regex>",
+    "aud": "<audience_regex>"
+  }
+}
+```
+
+For example:
+
+```shell
+# The client_id field is optional - if omitted, the environment variable name without _CLIENT_CREDS is used
+export SERVICE_A_CLIENT_CREDS='{"type":"oidc","data":{"iss":"https://auth\\.example\\.com","sub":"service-.*","aud":"api"}}'
+```
+
+If a matching token is supplied, then the header `X-Client-Id` will be
+set to the value of the matching client id. To reject requests that don't
 match, use the flag `--reject-unknown`
 
 `factor info`
